@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Login - Sedimcorp</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Iconos -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body class="login-body">
+
+    <!-- Botón para cambiar tema (Sol/Luna) -->
+    <button class="theme-toggle login-theme-btn" onclick="toggleTheme()" title="Cambiar Tema">
+        <i class="fas fa-sun" id="theme-icon"></i>
+    </button>
+
+    <div class="login-container">
+        <!-- AQUI ESTÁ TU LOGO -->
+        <img src="logo.png" alt="Sedimcorp Logo" class="login-logo">
+
+        <h2>Acceso al Sistema</h2>
+
+        <form id="login-form">
+            <input type="text" id="user" placeholder="Usuario" required>
+            <input type="password" id="pass" placeholder="Contraseña" required>
+            <button type="submit">Ingresar</button>
+            <p id="error-msg" style="color:var(--red-status); display:none; margin-top:10px;"></p>
+        </form>
+    </div>
+
+    <script>
+        // Lógica de TEMA (Igual que en el dashboard)
+        function toggleTheme() {
+            const html = document.documentElement;
+            const current = html.getAttribute('data-theme');
+            const target = current === 'light' ? 'dark' : 'light';
+            html.setAttribute('data-theme', target);
+            localStorage.setItem('theme', target);
+            updateIcon(target);
+        }
+
+        function updateIcon(theme) {
+            const icon = document.getElementById('theme-icon');
+            if (theme === 'light') {
+                icon.classList.remove('fa-sun');
+                icon.classList.add('fa-moon');
+            } else {
+                icon.classList.remove('fa-moon');
+                icon.classList.add('fa-sun');
+            }
+        }
+
+        // Cargar tema guardado
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        updateIcon(savedTheme);
+
+        // Lógica de LOGIN
+        document.getElementById('login-form').onsubmit = async (e) => {
+            e.preventDefault();
+            const usuario = document.getElementById('user').value;
+            const password = document.getElementById('pass').value;
+
+            const res = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ usuario, password })
+            });
+
+            if (res.ok) window.location.href = '/dashboard.html';
+            else {
+                const data = await res.json();
+                const msg = document.getElementById('error-msg');
+                msg.innerText = data.message;
+                msg.style.display = 'block';
+            }
+        };
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Control - Sedimcorp</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- FontAwesome para iconos -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body>
+
+    <div class="main-layout">
+        <!-- SIDEBAR MENU -->
+        <nav class="sidebar">
+            <!-- Encabezado con Título y Botón de Tema -->
+            <div class="sidebar-header">
+                <div class="brand">Admin Panel</div>
+                <button class="theme-toggle" onclick="toggleTheme()" title="Cambiar Tema">
+                    <i class="fas fa-sun" id="theme-icon"></i>
+                </button>
+            </div>
+
+            <!-- Lista de Navegación -->
+            <ul>
+                <li onclick="showView('equipos')" class="active">
+                    <i class="fas fa-desktop"></i> Control de Equipos
+                </li>
+                <li onclick="showView('usuarios')">
+                    <i class="fas fa-users"></i> Usuarios Sistema
+                </li>
+            </ul>
+
+            <!-- Footer con Logout -->
+            <div class="sidebar-footer">
+                <li onclick="logout()" class="logout-btn">
+                    <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
+                </li>
+            </div>
+        </nav>
+
+        <!-- AREA DE CONTENIDO PRINCIPAL -->
+        <div class="content">
+
+            <!-- VISTA 1: CONTROL DE EQUIPOS -->
+            <div id="view-equipos" class="view-section">
+                <header>
+                    <h1>Control de Equipos</h1>
+                </header>
+                <!-- Aquí JS renderiza las tarjetas -->
+                <div id="dashboard" class="dashboard-container"></div>
+            </div>
+
+            <!-- VISTA 2: GESTIÓN DE USUARIOS (AZURE SQL) -->
+            <div id="view-usuarios" class="view-section" style="display:none;">
+                <header>
+                    <h1>Usuarios del Sistema</h1>
+                </header>
+                <button class="btn-save" onclick="openUserModal()">
+                    <i class="fas fa-plus"></i> Nuevo Usuario
+                </button>
+
+                <div class="table-container">
+                    <table id="users-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Usuario</th>
+                                <th>Nombre Completo</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- JS llena esto automáticamente -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ========================================= -->
+    <!-- MODAL 1: GESTIÓN DE EQUIPOS (PC/SERVER) -->
+    <!-- ========================================= -->
+    <div id="modal-comp" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('modal-comp')">&times;</span>
+            <h2 id="modal-comp-title">Editar Equipo</h2>
+            <form id="computer-form">
+                <!-- Input oculto para guardar índices (area,sede,equipo) -->
+                <input type="hidden" id="comp-indices">
+
+                <label>Nombre (Ej: Terminal 1)</label>
+                <input type="text" id="comp-name" required>
+
+                <label>Hostname (Ej: DESKTOP-X123)</label>
+                <input type="text" id="comp-hostname" required>
+
+                <label>Tipo de Equipo</label>
+                <select id="comp-type">
+                    <option value="desktop">PC Escritorio</option>
+                    <option value="server">Servidor</option>
+                </select>
+
+                <label class="checkbox-container">
+                    <input type="checkbox" id="comp-status">
+                    <span class="checkmark"></span>
+                    Estado Actualizado
+                </label>
+
+                <div class="modal-actions">
+                    <button type="submit" class="btn-save">Guardar</button>
+                    <button type="button" id="btn-delete-comp" class="btn-delete">Eliminar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ========================================= -->
+    <!-- MODAL 2: GESTIÓN DE SEDES -->
+    <!-- ========================================= -->
+    <div id="modal-sede" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('modal-sede')">&times;</span>
+            <h2 id="modal-sede-title">Gestión de Sede</h2>
+            <form id="sede-form">
+                <input type="hidden" id="sede-indices">
+
+                <label>Nombre de la Sede</label>
+                <input type="text" id="sede-name" placeholder="Ej: Sede Almacén" required>
+
+                <div class="modal-actions">
+                    <button type="submit" class="btn-save">Guardar</button>
+                    <button type="button" id="btn-delete-sede" class="btn-delete">Eliminar Sede</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ========================================= -->
+    <!-- MODAL 3: GESTIÓN DE USUARIOS (NUEVO) -->
+    <!-- ========================================= -->
+    <div id="modal-user" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('modal-user')">&times;</span>
+            <h2>Nuevo Usuario</h2>
+            <form id="user-form">
+                <label>Usuario (Login)</label>
+                <input type="text" id="u-user" placeholder="Ej: jperalta" required>
+
+                <label>Contraseña</label>
+                <input type="password" id="u-pass" required>
+
+                <label>Nombre Completo</label>
+                <input type="text" id="u-name" placeholder="Ej: Juan Peralta" required>
+
+                <div class="modal-actions">
+                    <button type="submit" class="btn-save" style="width:100%;">Crear Usuario</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
