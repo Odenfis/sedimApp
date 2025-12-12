@@ -138,4 +138,97 @@ app.post('/api/data', isAuthenticated, (req, res) => {
     });
 });
 
+//cambio ya en version local como version nube
+app.get('/', (req, res) => {
+    res.redirect('/login.html');
+});
+
+// ==========================================
+//  MÓDULO: CAMBIO DE PRECIOS
+// ==========================================
+
+// 1. Obtener productos y precios por prefijo de empresa
+app.get('/api/precios/:empresa', isAuthenticated, async (req, res) => {
+    const { empresa } = req.params; // '02', '04', '06'
+
+    // Validación de seguridad para el prefijo
+    if (!['02', '04', '06'].includes(empresa)) {
+        return res.status(400).json({ message: 'Empresa no válida' });
+    }
+
+    try {
+        const pool = await getConnection();
+        const query = `
+            SELECT 
+                p.CodPro, 
+                p.Nombre, 
+                pr.PreTema1, pr.PreTema2, pr.PreTema3, 
+                pr.PreTema4, pr.PreTema5, pr.PreTema6
+            FROM Productos p
+            LEFT JOIN Precios pr ON p.CodPro = pr.Codpro
+            WHERE p.Tipo = 3 
+              AND p.CodPro LIKE @prefix + '%'
+              AND p.Eliminado = 0
+            ORDER BY p.Nombre ASC
+        `;
+
+        const result = await pool.request()
+            .input('prefix', sql.VarChar, empresa)
+            .query(query);
+
+        res.json(result.recordset);
+    } catch (error) {
+        console.error("Error obteniendo precios:", error);
+        res.status(500).json({ message: 'Error en base de datos' });
+    }
+});
+
+// 2. Actualizar precios de un producto
+app.put('/api/precios/:codpro', isAuthenticated, async (req, res) => {
+    const { codpro } = req.params;
+    const { p1, p2, p3, p4, p5, p6 } = req.body;
+
+    try {
+        const pool = await getConnection();
+
+        // Primero verificamos si existe registro en tabla Precios, sino lo insertamos (Upsert logic simple)
+        const check = await pool.request()
+            .input('cod', sql.Char(10), codpro)
+            .query("SELECT Codpro FROM Precios WHERE Codpro = @cod");
+
+        if (check.recordset.length === 0) {
+            // Si no existe en Precios, lo creamos
+            await pool.request()
+                .input('cod', sql.Char(10), codpro)
+                .input('p1', sql.Money, p1)
+                .input('p2', sql.Money, p2)
+                .input('p3', sql.Money, p3)
+                .input('p4', sql.Money, p4)
+                .input('p5', sql.Money, p5)
+                .input('p6', sql.Money, p6)
+                .query(`INSERT INTO Precios (Codpro, PreTema1, PreTema2, PreTema3, PreTema4, PreTema5, PreTema6) 
+                        VALUES (@cod, @p1, @p2, @p3, @p4, @p5, @p6)`);
+        } else {
+            // Si existe, actualizamos
+            await pool.request()
+                .input('cod', sql.Char(10), codpro)
+                .input('p1', sql.Money, p1)
+                .input('p2', sql.Money, p2)
+                .input('p3', sql.Money, p3)
+                .input('p4', sql.Money, p4)
+                .input('p5', sql.Money, p5)
+                .input('p6', sql.Money, p6)
+                .query(`UPDATE Precios SET 
+                        PreTema1=@p1, PreTema2=@p2, PreTema3=@p3, 
+                        PreTema4=@p4, PreTema5=@p5, PreTema6=@p6 
+                        WHERE Codpro=@cod`);
+        }
+
+        res.json({ message: 'Precios actualizados' });
+    } catch (error) {
+        console.error("Error actualizando precios:", error);
+        res.status(500).json({ message: 'Error actualizando' });
+    }
+});
+
 app.listen(PORT, () => console.log(`Servidor en puerto ${PORT}`));

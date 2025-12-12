@@ -350,3 +350,164 @@ function updateIcon(theme) {
         icon.classList.add('fa-sun');
     }
 }
+
+// ==========================================
+//  MÓDULO: CAMBIO DE PRECIOS
+// ==========================================
+
+// Actualizar la función showView para incluir 'precios'
+const originalShowView = showView; // Guardamos referencia si quieres, o reescribimos:
+
+function showView(viewName) {
+    // Ocultar todas
+    document.getElementById('view-equipos').style.display = 'none';
+    document.getElementById('view-usuarios').style.display = 'none';
+    document.getElementById('view-precios').style.display = 'none';
+
+    // Resetear clases active
+    document.querySelectorAll('.sidebar li').forEach(li => li.classList.remove('active'));
+
+    // Lógica de activación
+    if (viewName === 'equipos') {
+        document.getElementById('view-equipos').style.display = 'block';
+        document.querySelectorAll('.sidebar li')[0].classList.add('active');
+    } else if (viewName === 'usuarios') {
+        document.getElementById('view-usuarios').style.display = 'block';
+        document.querySelectorAll('.sidebar li')[1].classList.add('active');
+    } else if (viewName === 'precios') {
+        document.getElementById('view-precios').style.display = 'block';
+        document.querySelectorAll('.sidebar li')[2].classList.add('active'); // Asumiendo que es el 3ro
+    }
+}
+
+// 1. Cargar productos desde Azure al seleccionar empresa
+async function cargarProductosPrecios() {
+    const empresa = document.getElementById('empresa-select').value;
+    const tbody = document.querySelector('#precios-table tbody');
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">Cargando productos...</td></tr>';
+
+    try {
+        const res = await fetch(`/api/precios/${empresa}`);
+        if (!res.ok) throw new Error('Error al cargar');
+
+        const productos = await res.json();
+        renderTablaPrecios(productos);
+    } catch (error) {
+        console.error(error);
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--red-status);">Error cargando datos</td></tr>';
+    }
+}
+
+// 2. Renderizar la tabla con inputs editables
+let productosCache = []; // Para el buscador local
+
+function renderTablaPrecios(lista) {
+    productosCache = lista; // Guardamos para filtrar luego
+    const tbody = document.querySelector('#precios-table tbody');
+    tbody.innerHTML = '';
+
+    if (lista.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">No se encontraron productos tipo 3.</td></tr>';
+        return;
+    }
+
+    lista.forEach(p => {
+        const tr = document.createElement('tr');
+        // Formatear valores nulos a 0
+        const p1 = p.PreTema1 || 0;
+        const p2 = p.PreTema2 || 0;
+        const p3 = p.PreTema3 || 0;
+        const p4 = p.PreTema4 || 0;
+        const p5 = p.PreTema5 || 0;
+        const p6 = p.PreTema6 || 0;
+
+        tr.innerHTML = `
+            <td>
+                <span style="font-weight:bold; font-size:0.85rem; color:var(--text-secondary)">${p.CodPro}</span><br>
+                ${p.Nombre}
+            </td>
+            <td><input type="number" step="0.01" class="price-input" id="p1-${p.CodPro}" value="${p1}"></td>
+            <td><input type="number" step="0.01" class="price-input" id="p2-${p.CodPro}" value="${p2}"></td>
+            <td><input type="number" step="0.01" class="price-input" id="p3-${p.CodPro}" value="${p3}"></td>
+            <td><input type="number" step="0.01" class="price-input" id="p4-${p.CodPro}" value="${p4}"></td>
+            <td><input type="number" step="0.01" class="price-input" id="p5-${p.CodPro}" value="${p5}"></td>
+            <td><input type="number" step="0.01" class="price-input" id="p6-${p.CodPro}" value="${p6}"></td>
+            <td>
+                <button class="btn-update" onclick="guardarPrecio('${p.CodPro}')">
+                    <i class="fas fa-save"></i>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+// 3. Filtrar localmente por nombre o código (Buscador CORREGIDO)
+function filtrarTablaPrecios() {
+    // 1. Obtener el texto que escribió el usuario
+    const input = document.getElementById('search-product');
+    const texto = input.value.toLowerCase().trim();
+
+    // 2. Seleccionar todas las filas de la tabla de precios
+    const filas = document.querySelectorAll('#precios-table tbody tr');
+
+    // 3. Recorrer cada fila para decidir si se muestra u oculta
+    filas.forEach(fila => {
+        // Obtenemos la primera celda (td) que contiene Código y Nombre
+        const celdaProducto = fila.cells[0];
+
+        // Validación por si es una fila de "Cargando..." o vacía
+        if (celdaProducto) {
+            // Obtener todo el texto dentro de esa celda
+            const contenido = celdaProducto.textContent || celdaProducto.innerText;
+
+            // Verificamos si el texto buscado está dentro del contenido
+            if (contenido.toLowerCase().includes(texto)) {
+                fila.style.display = ''; // Mostrar (quita el display:none)
+            } else {
+                fila.style.display = 'none'; // Ocultar
+            }
+        }
+    });
+}
+
+// 4. Guardar cambios en Azure
+async function guardarPrecio(codPro) {
+    const p1 = document.getElementById(`p1-${codPro}`).value;
+    const p2 = document.getElementById(`p2-${codPro}`).value;
+    const p3 = document.getElementById(`p3-${codPro}`).value;
+    const p4 = document.getElementById(`p4-${codPro}`).value;
+    const p5 = document.getElementById(`p5-${codPro}`).value;
+    const p6 = document.getElementById(`p6-${codPro}`).value;
+
+    const btn = event.currentTarget; // El botón presionado
+    const icono = btn.querySelector('i');
+
+    // Efecto visual de carga
+    icono.className = "fas fa-spinner fa-spin";
+
+    try {
+        const res = await fetch(`/api/precios/${codPro}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ p1, p2, p3, p4, p5, p6 })
+        });
+
+        if (res.ok) {
+            // Efecto de éxito visual
+            icono.className = "fas fa-check";
+            btn.style.backgroundColor = "var(--green-status)";
+            setTimeout(() => {
+                icono.className = "fas fa-save";
+                btn.style.backgroundColor = "var(--accent)";
+            }, 1500);
+        } else {
+            alert("Error al guardar");
+            icono.className = "fas fa-save";
+        }
+    } catch (e) {
+        console.error(e);
+        alert("Error de conexión");
+        icono.className = "fas fa-save";
+    }
+}

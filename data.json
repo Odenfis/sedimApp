@@ -15,9 +15,9 @@
             },
             {
               "id": 2,
-              "type": "desktop",
               "name": "Terminal 1",
               "hostname": "Desktop-1B10JD2",
+              "type": "desktop",
               "status": true
             },
             {

@@ -434,8 +434,67 @@ tr:hover {
     margin-bottom: 20px;
 
     /* Fondo blanco y bordes redondeados para que resalte en fondo oscuro */
+    /*
     background-color: white;
-    padding: 15px;
     border-radius: 10px;
+    */
+    padding: 15px;
+    border-radius: 2px;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Estilos para el módulo de Precios */
+.filters-container {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 20px;
+    background: var(--card-bg);
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.filters-container select,
+.filters-container input {
+    padding: 10px;
+    border-radius: 5px;
+    border: 1px solid var(--border-color);
+    background: var(--input-bg);
+    color: var(--text-color);
+}
+
+.filters-container input {
+    flex: 1;
+}
+
+/* El buscador ocupa el resto del espacio */
+
+/* Inputs dentro de la tabla */
+.price-input {
+    width: 70px;
+    padding: 5px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-color);
+    color: var(--text-color);
+    border-radius: 4px;
+    text-align: right;
+}
+
+.price-input:focus {
+    border-color: var(--accent);
+    background: var(--input-bg);
+}
+
+.btn-update {
+    background-color: var(--accent);
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.btn-update:hover {
+    background-color: var(--accent-hover);
 }

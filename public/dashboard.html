@@ -31,6 +31,9 @@
                 <li onclick="showView('usuarios')">
                     <i class="fas fa-users"></i> Usuarios Sistema
                 </li>
+                <li onclick="showView('precios')">
+                    <i class="fas fa-tags"></i> Cambio de Precios
+                </li>
             </ul>
 
             <!-- Footer con Logout -->
@@ -78,7 +81,46 @@
                     </table>
                 </div>
             </div>
+            <!-- VISTA 3: CAMBIO DE PRECIOS -->
+            <div id="view-precios" class="view-section" style="display:none;">
+                <header>
+                    <h1>Gestión de Precios - Ventas 10%</h1>
+                </header>
 
+                <!-- Controles de Filtro -->
+                <div class="filters-container">
+                    <select id="empresa-select" onchange="cargarProductosPrecios()">
+                        <option value="" disabled selected>-- Seleccione Empresa --</option>
+                        <option value="02">Cocineria</option>
+                        <option value="04">Mar Picante</option>
+                        <option value="06">Abruzzo</option>
+                    </select>
+
+                    <input type="text" id="search-product" placeholder="Buscar por nombre..."
+                        onkeyup="filtrarTablaPrecios()">
+                </div>
+
+                <!-- Tabla de Precios -->
+                <div class="table-container">
+                    <table id="precios-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 25%;">Producto</th>
+                                <th>Precio 1</th>
+                                <th>Precio 2</th>
+                                <th>Precio 3</th>
+                                <th>Precio 4</th>
+                                <th>Precio 5</th>
+                                <th>Precio 6</th>
+                                <th>Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Se llena con JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 
