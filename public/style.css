@@ -1,0 +1,831 @@
+/* =========================================
+   1. VARIABLES Y TEMAS
+   ========================================= */
+:root {
+    /* --- MODO CLARO (Default) --- */
+    --bg-color: #f3f4f6;
+    --card-bg: #ffffff;
+
+    --sidebar-bg: #ffffff;
+    --sidebar-text: #4b5563;
+    --sidebar-active: #e5e7eb;
+
+    --text-color: #1f2937;
+    --text-secondary: #6b7280;
+    --border-color: #e5e7eb;
+
+    --input-bg: #ffffff;
+    --input-border: #d1d5db;
+
+    --accent: #2c5484;
+    --accent-hover: #1e3a5c;
+
+    --green-status: #10b981;
+    --red-status: #ef4444;
+
+    --table-header-bg: #f9fafb;
+    --table-header-text: #374151;
+    --table-row-hover: #f3f4f6;
+
+    --logo-container-bg: #1f2937;
+
+    --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="dark"] {
+    /* --- MODO OSCURO --- */
+    --bg-color: #111827;
+    --card-bg: #1f2937;
+
+    --sidebar-bg: #111827;
+    --sidebar-text: #9ca3af;
+    --sidebar-active: #374151;
+
+    --text-color: #f9fafb;
+    --text-secondary: #9ca3af;
+
+    --border-color: #374151;
+
+    --input-bg: #374151;
+    --input-border: #4b5563;
+
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+
+    --green-status: #34d399;
+    --red-status: #f87171;
+
+    --table-header-bg: #1f2937;
+    --table-header-text: #f3f4f6;
+    --table-row-hover: #374151;
+
+    --logo-container-bg: transparent;
+}
+
+/* =========================================
+   2. ESTILOS GENERALES
+   ========================================= */
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    margin: 0;
+    padding: 0;
+    transition: background-color 0.3s, color 0.3s;
+}
+
+h1,
+h2,
+h3 {
+    margin: 0;
+    font-weight: 700;
+    color: var(--text-color);
+}
+
+/* Inputs y Selects */
+input,
+select {
+    padding: 10px 12px;
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
+    color: var(--text-color);
+    border-radius: 6px;
+    outline: none;
+    transition: border-color 0.2s;
+    font-size: 0.95rem;
+}
+
+input:focus,
+select:focus {
+    border-color: var(--accent);
+    /*nuevo agregado de cambio ring por box-shadow*/
+    box-shadow: 0 0 0 2px var(--accent);
+}
+
+button {
+    cursor: pointer;
+    transition: 0.2s;
+    font-weight: 600;
+    border-radius: 6px;
+    border: none;
+}
+
+.btn-save {
+    background-color: var(--green-status);
+    color: white;
+    padding: 10px 20px;
+}
+
+.btn-save:hover {
+    filter: brightness(90%);
+}
+
+.btn-delete {
+    background-color: var(--red-status);
+    color: white;
+    padding: 10px 20px;
+}
+
+.btn-delete:hover {
+    filter: brightness(90%);
+}
+
+.theme-toggle {
+    /*
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    width: 35px;
+    height: 35px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;*/
+    /* Reseteo completo del botón */
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    padding: 0;
+    margin: 0;
+    /* Tamaño fijo circular */
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    /* Usamos GRID en lugar de FLEX para mayor precisión en el centro */
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    /* Asegura que no herede alineaciones de texto extrañas */
+    text-align: center;
+}
+
+.theme-toggle:hover {
+    /*background: var(--border-color);*/
+    background: var(--border-color);
+    transform: scale(1.05);
+}
+
+/* Aseguramos que el ícono (i) no tenga márgenes raros */
+.theme-toggle i {
+    font-size: 1.1rem;
+    line-height: 1;
+    /* Esto es clave: elimina cualquier margen oculto que FontAwesome agregue */
+    margin: 0 !important;
+    padding: 0 !important;
+    width: auto !important;
+    display: inline-block;
+}
+
+
+/* =========================================
+   3. LOGIN Y LOGOTIPO
+   ========================================= */
+.login-body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background-color: var(--bg-color);
+}
+
+.login-container {
+    background: var(--card-bg);
+    padding: 2rem;
+    border-radius: 1rem;
+    border: 1px solid var(--border-color);
+    width: 350px;
+    text-align: center;
+    box-shadow: var(--shadow);
+}
+
+.login-logo {
+    max-width: 160px;
+    margin-bottom: 1.5rem;
+    background-color: var(--logo-container-bg);
+    padding: 1rem;
+    border-radius: 12px;
+}
+
+.login-container button {
+    width: 100%;
+    padding: 12px;
+    background: var(--accent);
+    color: white;
+    margin-top: 10px;
+}
+
+.login-container input {
+    width: 100%;
+    margin-bottom: 15px;
+    box-sizing: border-box;
+}
+
+/*nuevaseccion_ocultar/mostrar contraseña*/
+/* --- NUEVO: Wrapper para el ojito de contraseña --- */
+.password-wrapper {
+    position: relative;
+    width: 100%;
+    margin-bottom: 15px;
+    /* Mantiene el espacio que tenía el input solo */
+}
+
+/* Ajustamos el input cuando está dentro del wrapper */
+.password-wrapper input {
+    margin-bottom: 0;
+    /* Quitamos el margen del input porque lo maneja el wrapper */
+    padding-right: 40px;
+    /* Espacio a la derecha para que el texto no choque con el ojo */
+}
+
+/* Estilo del icono del ojo */
+.toggle-password {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    /* Centrado vertical perfecto */
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 1rem;
+    transition: color 0.2s;
+}
+
+.toggle-password:hover {
+    color: var(--accent);
+}
+
+/*nuevaseccion_ocultar/mostrar contraseña*/
+.login-theme-btn {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+}
+
+
+/* =========================================
+   4. SIDEBAR (MENU LATERAL)
+   ========================================= */
+.main-layout {
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.sidebar {
+    width: 260px;
+    background: var(--sidebar-bg);
+    padding: 20px;
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    transition: background-color 0.3s;
+}
+
+.sidebar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.brand {
+    color: var(--text-color);
+    font-size: 1.25rem;
+    font-weight: 800;
+}
+
+.sidebar ul {
+    list-style: none;
+    padding: 0;
+    flex: 1;
+}
+
+.sidebar li {
+    padding: 12px 15px;
+    color: var(--sidebar-text);
+    cursor: pointer;
+    border-radius: 8px;
+    margin-bottom: 5px;
+    display: flex;
+    align-items: center;
+    font-weight: 500;
+}
+
+.sidebar li:hover {
+    background: var(--sidebar-active);
+}
+
+.sidebar li.active {
+    background: var(--accent);
+    color: white;
+}
+
+.sidebar i {
+    margin-right: 12px;
+    width: 20px;
+    text-align: center;
+}
+
+.sidebar-footer {
+    border-top: 1px solid var(--border-color);
+    padding-top: 15px;
+}
+
+.logout-btn {
+    color: var(--red-status) !important;
+}
+
+
+/* =========================================
+   5. CONTENIDO Y PANELES
+   ========================================= */
+.content {
+    flex: 1;
+    padding: 2rem;
+    overflow-y: auto;
+    background: var(--bg-color);
+}
+
+.view-section header {
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 10px;
+}
+
+
+/* --- Dashboard (Control Equipos) --- */
+.dashboard-container {
+    display: flex;
+    gap: 20px;
+    overflow-x: auto;
+    padding-bottom: 20px;
+}
+
+.area-column {
+    min-width: 300px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.area-title {
+    text-align: center;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-color);
+    background: var(--card-bg);
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.location-card {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 15px;
+    box-shadow: var(--shadow);
+}
+
+/* --- CAMBIO: Header de tarjeta corregido (Iconos caídos) --- */
+.location-header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    /* Alineación vertical perfecta */
+    margin-bottom: 15px;
+    flex-wrap: nowrap;
+    /* IMPORTANTE: Evita que bajen a otra línea */
+}
+
+.location-name {
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--text-color);
+    white-space: nowrap;
+    /* Evita que el texto empuje demasiado */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    /* Puntos suspensivos si es muy largo */
+    margin-right: 10px;
+}
+
+.sede-actions {
+    display: flex;
+    /* Mantiene los iconos juntos */
+    gap: 8px;
+    flex-shrink: 0;
+    /* IMPORTANTE: Evita que los iconos se aplasten */
+}
+
+.sede-actions i {
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: 0.2s;
+    font-size: 1rem;
+}
+
+.sede-actions i:hover {
+    color: var(--accent);
+}
+
+/* Grid de PCs */
+.computer-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    margin-top: 15px;
+}
+
+.computer-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 70px;
+    cursor: pointer;
+    transition: transform 0.2s;
+    padding: 5px;
+    border-radius: 5px;
+}
+
+.computer-item:hover {
+    background: var(--bg-color);
+    transform: translateY(-2px);
+}
+
+.icon-wrapper {
+    font-size: 2rem;
+    color: var(--text-secondary);
+    margin-bottom: 5px;
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    padding: 2px 6px;
+    border-radius: 10px;
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+}
+
+.dot {
+    height: 8px;
+    width: 8px;
+    border-radius: 50%;
+}
+
+.status-true .dot {
+    background-color: var(--green-status);
+    box-shadow: 0 0 4px var(--green-status);
+}
+
+.status-false .dot {
+    background-color: var(--red-status);
+}
+
+.comp-name {
+    font-weight: 600;
+    font-size: 0.75rem;
+    color: var(--text-color);
+    margin-top: 4px;
+    text-align: center;
+}
+
+.comp-host {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+
+/* =========================================
+   6. TABLAS (USUARIOS Y PRECIOS)
+   ========================================= */
+.table-container {
+    background: var(--card-bg);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    margin-top: 15px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th {
+    background-color: var(--table-header-bg);
+    color: var(--table-header-text);
+    font-weight: 600;
+    text-align: left;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-color);
+    font-size: 0.95rem;
+}
+
+tr:last-child td {
+    border-bottom: none;
+}
+
+tr:hover {
+    background-color: var(--table-row-hover);
+}
+
+/* --- CAMBIO: Módulo de Precios y Buscador Corregido --- */
+.filters-container {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 20px;
+    background: var(--card-bg);
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    align-items: center;
+    /* Centrar verticalmente */
+}
+
+/* Select de empresa (ancho fijo razonable) */
+.filters-container select {
+    min-width: 200px;
+}
+
+/* Input del buscador (Ocupar todo el espacio restante) */
+.filters-container input {
+    flex: 1;
+    /* Esto hace que se expanda horizontalmente */
+    width: auto;
+}
+
+.price-input {
+    width: 80px;
+    padding: 6px;
+    text-align: right;
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+}
+
+.btn-update {
+    background: var(--accent);
+    color: white;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+}
+
+
+/* =========================================
+   7. MODALES (NUEVO DISEÑO CORREGIDO)
+   ========================================= */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 100;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(2px);
+}
+
+.modal-content {
+    background-color: var(--card-bg);
+    margin: 5% auto;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    width: 400px;
+    border-radius: 12px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        transform: translateY(-20px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.modal-content h2 {
+    padding: 20px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 1.25rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* --- CAMBIO: Botón Cerrar (X) del Modal Corregido --- */
+.close {
+    font-size: 2rem;
+    /* Tamaño adecuado */
+    line-height: 1;
+    /* Evita que flote raro */
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: 0.2s;
+    margin-left: 10px;
+}
+
+.close:hover {
+    color: var(--red-status);
+}
+
+form {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+form label {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-color);
+    margin-bottom: -5px;
+}
+
+.modal-actions {
+    margin-top: 10px;
+    display: flex;
+    gap: 10px;
+}
+
+.modal-actions button {
+    flex: 1;
+}
+
+.checkbox-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    margin-top: 5px;
+}
+
+.checkbox-container input {
+    width: auto;
+    margin: 0;
+}
+
+/* =========================================
+   8. ESTILOS REVISIÓN NUBE
+   ========================================= */
+
+/* Ajuste de filtros para que se vean como etiquetas arriba */
+.revision-filters {
+    align-items: flex-start;
+    /* Para alinear con labels */
+    flex-wrap: wrap;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.filter-group label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+}
+
+/* Grid de Tarjetas */
+.revision-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    /* Responsivo */
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.status-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    transition: transform 0.2s;
+    min-height: 180px;
+}
+
+.status-card:hover {
+    transform: translateY(-3px);
+}
+
+/* Header de la Tarjeta */
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 10px;
+}
+
+.table-name {
+    font-weight: 800;
+    font-size: 1.1rem;
+    color: var(--text-color);
+    text-transform: uppercase;
+}
+
+/* Semáforo */
+.traffic-light {
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+}
+
+.light-green {
+    background-color: var(--green-status);
+    box-shadow: 0 0 8px var(--green-status);
+}
+
+.light-red {
+    background-color: var(--red-status);
+    box-shadow: 0 0 8px var(--red-status);
+}
+
+/* Contenido de Datos */
+.card-data {
+    font-family: 'Consolas', monospace;
+    /* Para que parezca dato técnico */
+    font-size: 0.9rem;
+    color: var(--text-color);
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.data-row span {
+    font-weight: bold;
+    color: var(--text-secondary);
+}
+
+.total-row {
+    margin-top: auto;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border-color);
+    font-weight: bold;
+    font-size: 1rem;
+    text-align: right;
+    color: var(--accent);
+}
+
+/* Estado Vacío (Rojo) */
+.no-data-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-secondary);
+    text-align: center;
+    gap: 10px;
+}
+
+.no-data-state i {
+    font-size: 2.5rem;
+    color: var(--red-status);
+    opacity: 0.5;
+}
+
+.no-data-text {
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+
+.empty-state-message {
+    width: 100%;
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 40px;
+}
