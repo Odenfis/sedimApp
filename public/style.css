@@ -30,6 +30,11 @@
     --logo-container-bg: #1f2937;
 
     --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+
+    /* Variables de Dimensiones Sidebar */
+    --sidebar-width: 260px;
+    --sidebar-width-collapsed: 80px;
+    /* Un poco más ancho para que se vea bien colapsado */
 }
 
 [data-theme="dark"] {
@@ -93,12 +98,13 @@ select {
     outline: none;
     transition: border-color 0.2s;
     font-size: 0.95rem;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 input:focus,
 select:focus {
     border-color: var(--accent);
-    /*nuevo agregado de cambio ring por box-shadow*/
     box-shadow: 0 0 0 2px var(--accent);
 }
 
@@ -130,51 +136,35 @@ button {
     filter: brightness(90%);
 }
 
+/* --- BOTÓN TEMA (SOL/LUNA) --- */
 .theme-toggle {
-    /*
-    background: transparent;
-    border: 1px solid var(--border-color);
-    color: var(--text-color);
-    width: 35px;
-    height: 35px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;*/
-    /* Reseteo completo del botón */
     background: transparent;
     border: 1px solid var(--border-color);
     color: var(--text-color);
     padding: 0;
-    margin: 0;
-    /* Tamaño fijo circular */
-    width: 36px;
-    height: 36px;
+    margin: 0 auto;
+    /* Auto margin para centrar horizontalmente */
+    width: 38px;
+    height: 38px;
     border-radius: 50%;
-    /* Usamos GRID en lugar de FLEX para mayor precisión en el centro */
     display: grid;
     place-items: center;
     cursor: pointer;
     transition: all 0.2s ease;
-    /* Asegura que no herede alineaciones de texto extrañas */
-    text-align: center;
 }
 
 .theme-toggle:hover {
-    /*background: var(--border-color);*/
     background: var(--border-color);
     transform: scale(1.05);
 }
 
-/* Aseguramos que el ícono (i) no tenga márgenes raros */
 .theme-toggle i {
+    display: block;
     font-size: 1.1rem;
     line-height: 1;
-    /* Esto es clave: elimina cualquier margen oculto que FontAwesome agregue */
     margin: 0 !important;
     padding: 0 !important;
-    width: auto !important;
-    display: inline-block;
+    width: auto;
 }
 
 
@@ -194,9 +184,11 @@ button {
     padding: 2rem;
     border-radius: 1rem;
     border: 1px solid var(--border-color);
-    width: 350px;
+    width: 90%;
+    max-width: 350px;
     text-align: center;
     box-shadow: var(--shadow);
+    position: relative;
 }
 
 .login-logo {
@@ -215,90 +207,115 @@ button {
     margin-top: 10px;
 }
 
-.login-container input {
-    width: 100%;
-    margin-bottom: 15px;
-    box-sizing: border-box;
+.login-theme-btn {
+    position: absolute;
+    top: 25px;
+    right: 25px;
+    z-index: 10;
 }
 
-/*nuevaseccion_ocultar/mostrar contraseña*/
-/* --- NUEVO: Wrapper para el ojito de contraseña --- */
+/* Wrapper contraseña con ojo */
 .password-wrapper {
     position: relative;
     width: 100%;
     margin-bottom: 15px;
-    /* Mantiene el espacio que tenía el input solo */
 }
 
-/* Ajustamos el input cuando está dentro del wrapper */
 .password-wrapper input {
     margin-bottom: 0;
-    /* Quitamos el margen del input porque lo maneja el wrapper */
     padding-right: 40px;
-    /* Espacio a la derecha para que el texto no choque con el ojo */
 }
 
-/* Estilo del icono del ojo */
 .toggle-password {
     position: absolute;
     right: 12px;
     top: 50%;
     transform: translateY(-50%);
-    /* Centrado vertical perfecto */
     cursor: pointer;
     color: var(--text-secondary);
     font-size: 1rem;
-    transition: color 0.2s;
 }
 
 .toggle-password:hover {
     color: var(--accent);
 }
 
-/*nuevaseccion_ocultar/mostrar contraseña*/
-.login-theme-btn {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-}
-
 
 /* =========================================
-   4. SIDEBAR (MENU LATERAL)
+   4. SIDEBAR (MENU LATERAL) - REDISEÑADO
    ========================================= */
 .main-layout {
     display: flex;
     height: 100vh;
     overflow: hidden;
+    position: relative;
 }
 
+/* Sidebar Base */
 .sidebar {
-    width: 260px;
+    width: var(--sidebar-width);
     background: var(--sidebar-bg);
-    padding: 20px;
+    padding: 20px 15px;
+    /* Padding interno más balanceado */
     border-right: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
-    transition: background-color 0.3s;
+    transition: width 0.3s ease, transform 0.3s ease;
+    z-index: 50;
+    flex-shrink: 0;
 }
 
 .sidebar-header {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
+    flex-direction: column;
+    gap: 15px;
     margin-bottom: 2rem;
+    width: 100%;
+}
+
+/* --- CAMBIO: Header con Space-Between --- */
+.brand-container {
+    display: flex;
+    justify-content: space-between;
+    /* Texto izquierda, Botón derecha */
+    align-items: center;
+    width: 100%;
+    height: 40px;
 }
 
 .brand {
     color: var(--text-color);
-    font-size: 1.25rem;
+    font-size: 1.2rem;
     font-weight: 800;
+    white-space: nowrap;
+    overflow: hidden;
+    transition: opacity 0.2s;
 }
 
+/* Botón Hamburguesa/Flecha */
+.toggle-btn {
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 1.3rem;
+    padding: 5px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+}
+
+.toggle-btn:hover {
+    background: var(--sidebar-active);
+    color: var(--accent);
+}
+
+/* Lista Menú */
 .sidebar ul {
     list-style: none;
     padding: 0;
     flex: 1;
+    width: 100%;
 }
 
 .sidebar li {
@@ -310,6 +327,8 @@ button {
     display: flex;
     align-items: center;
     font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
 }
 
 .sidebar li:hover {
@@ -322,11 +341,13 @@ button {
 }
 
 .sidebar i {
-    margin-right: 12px;
-    width: 20px;
+    min-width: 24px;
     text-align: center;
+    font-size: 1.1rem;
+    margin-right: 12px;
 }
 
+/* Footer Sidebar */
 .sidebar-footer {
     border-top: 1px solid var(--border-color);
     padding-top: 15px;
@@ -336,15 +357,74 @@ button {
     color: var(--red-status) !important;
 }
 
+/* --- ESTADO COLAPSADO (SOLO ESCRITORIO) --- */
+.sidebar.collapsed {
+    width: var(--sidebar-width-collapsed);
+    padding: 20px 10px;
+}
+
+.sidebar.collapsed .brand,
+.sidebar.collapsed li span {
+    display: none;
+    opacity: 0;
+}
+
+/* Cuando está colapsado, centramos todo */
+.sidebar.collapsed .brand-container {
+    justify-content: center;
+}
+
+.sidebar.collapsed .toggle-btn {
+    margin: 0;
+}
+
+.sidebar.collapsed li {
+    justify-content: center;
+    padding: 12px 0;
+}
+
+.sidebar.collapsed i {
+    margin-right: 0;
+}
+
+/* Botón Hamburguesa Móvil (Visible solo en responsive) */
+.mobile-menu-btn {
+    display: none;
+    position: absolute;
+    top: 15px;
+    left: 15px;
+    z-index: 40;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    padding: 8px 12px;
+    font-size: 1.2rem;
+    color: var(--text-color);
+    box-shadow: var(--shadow);
+    border-radius: 6px;
+}
+
+#mobile-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 45;
+    backdrop-filter: blur(2px);
+}
+
 
 /* =========================================
-   5. CONTENIDO Y PANELES
+   5. CONTENIDO GENERAL
    ========================================= */
 .content {
     flex: 1;
     padding: 2rem;
     overflow-y: auto;
     background: var(--bg-color);
+    width: 100%;
 }
 
 .view-section header {
@@ -353,8 +433,30 @@ button {
     padding-bottom: 10px;
 }
 
+/* Filtros Generales */
+.filters-container {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 20px;
+    background: var(--card-bg);
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    align-items: center;
+    flex-wrap: wrap;
+}
 
-/* --- Dashboard (Control Equipos) --- */
+.filters-container select {
+    min-width: 150px;
+}
+
+.filters-container input {
+    flex: 1;
+    min-width: 200px;
+}
+
+
+/* --- DASHBOARD: CONTROL DE EQUIPOS --- */
 .dashboard-container {
     display: flex;
     gap: 20px;
@@ -363,7 +465,7 @@ button {
 }
 
 .area-column {
-    min-width: 300px;
+    min-width: 280px;
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -382,42 +484,34 @@ button {
 }
 
 .location-card {
-    background-color: var(--card-bg);
+    background: var(--card-bg);
     border: 1px solid var(--border-color);
     border-radius: 10px;
     padding: 15px;
     box-shadow: var(--shadow);
 }
 
-/* --- CAMBIO: Header de tarjeta corregido (Iconos caídos) --- */
 .location-header-top {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    /* Alineación vertical perfecta */
     margin-bottom: 15px;
     flex-wrap: nowrap;
-    /* IMPORTANTE: Evita que bajen a otra línea */
 }
 
 .location-name {
     font-weight: 700;
-    font-size: 1rem;
-    color: var(--text-color);
     white-space: nowrap;
-    /* Evita que el texto empuje demasiado */
     overflow: hidden;
     text-overflow: ellipsis;
-    /* Puntos suspensivos si es muy largo */
     margin-right: 10px;
+    color: var(--text-color);
 }
 
 .sede-actions {
     display: flex;
-    /* Mantiene los iconos juntos */
     gap: 8px;
     flex-shrink: 0;
-    /* IMPORTANTE: Evita que los iconos se aplasten */
 }
 
 .sede-actions i {
@@ -431,83 +525,218 @@ button {
     color: var(--accent);
 }
 
-/* Grid de PCs */
+/* --- GRID DE EQUIPOS (ESPACIOSO) --- */
 .computer-grid {
     display: flex;
     flex-wrap: wrap;
-    gap: 15px;
+    gap: 20px;
+    /* Más espacio */
     margin-top: 15px;
+    justify-content: flex-start;
 }
 
 .computer-item {
     display: flex;
     flex-direction: column;
     align-items: center;
-    width: 70px;
+    width: 100px;
+    /* Ancho suficiente para texto */
     cursor: pointer;
     transition: transform 0.2s;
-    padding: 5px;
-    border-radius: 5px;
+    padding: 10px;
+    border-radius: 8px;
 }
 
 .computer-item:hover {
     background: var(--bg-color);
-    transform: translateY(-2px);
+    transform: translateY(-3px);
 }
 
 .icon-wrapper {
-    font-size: 2rem;
+    font-size: 2.2rem;
     color: var(--text-secondary);
-    margin-bottom: 5px;
+    margin-bottom: 8px;
 }
 
 .status-indicator {
     display: flex;
     align-items: center;
-    padding: 2px 6px;
-    border-radius: 10px;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
     background: var(--bg-color);
     border: 1px solid var(--border-color);
+    margin-bottom: 5px;
 }
 
 .dot {
-    height: 8px;
     width: 8px;
+    height: 8px;
     border-radius: 50%;
 }
 
 .status-true .dot {
-    background-color: var(--green-status);
-    box-shadow: 0 0 4px var(--green-status);
+    background: var(--green-status);
+    box-shadow: 0 0 5px var(--green-status);
 }
 
 .status-false .dot {
-    background-color: var(--red-status);
+    background: var(--red-status);
+}
+
+.comp-info {
+    text-align: center;
+    width: 100%;
+    line-height: 1.2;
 }
 
 .comp-name {
-    font-weight: 600;
-    font-size: 0.75rem;
+    display: block;
+    font-weight: 700;
+    font-size: 0.85rem;
     color: var(--text-color);
-    margin-top: 4px;
-    text-align: center;
+    margin-bottom: 2px;
+    word-wrap: break-word;
 }
 
 .comp-host {
-    font-size: 0.65rem;
+    display: block;
+    font-size: 0.7rem;
     color: var(--text-secondary);
-    text-align: center;
+    word-break: break-all;
 }
 
 
-/* =========================================
-   6. TABLAS (USUARIOS Y PRECIOS)
-   ========================================= */
+/* --- MÓDULO REVISIÓN NUBE --- */
+.revision-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.revision-filters {
+    align-items: flex-start;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.filter-group label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+}
+
+.status-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    min-height: 180px;
+    transition: transform 0.2s;
+}
+
+.status-card:hover {
+    transform: translateY(-3px);
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 10px;
+}
+
+.table-name {
+    font-weight: 800;
+    font-size: 1.1rem;
+    color: var(--text-color);
+    text-transform: uppercase;
+}
+
+.traffic-light {
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+}
+
+.light-green {
+    background: var(--green-status);
+    box-shadow: 0 0 8px var(--green-status);
+}
+
+.light-red {
+    background: var(--red-status);
+    box-shadow: 0 0 8px var(--red-status);
+}
+
+.card-data {
+    font-family: 'Consolas', monospace;
+    font-size: 0.9rem;
+    color: var(--text-color);
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.data-row span {
+    font-weight: bold;
+    color: var(--text-secondary);
+}
+
+.total-row {
+    margin-top: auto;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border-color);
+    font-weight: bold;
+    font-size: 1rem;
+    text-align: right;
+    color: var(--accent);
+}
+
+.no-data-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-secondary);
+    text-align: center;
+    gap: 10px;
+}
+
+.no-data-state i {
+    font-size: 2.5rem;
+    color: var(--red-status);
+    opacity: 0.5;
+}
+
+.empty-state-message {
+    width: 100%;
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 40px;
+}
+
+
+/* --- TABLAS Y PRECIOS --- */
 .table-container {
     background: var(--card-bg);
     border-radius: 8px;
     border: 1px solid var(--border-color);
-    overflow: hidden;
+    overflow-x: auto;
     box-shadow: var(--shadow);
     margin-top: 15px;
 }
@@ -515,58 +744,27 @@ button {
 table {
     width: 100%;
     border-collapse: collapse;
+    min-width: 600px;
+}
+
+th,
+td {
+    padding: 12px 15px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
 }
 
 th {
-    background-color: var(--table-header-bg);
+    background: var(--table-header-bg);
     color: var(--table-header-text);
     font-weight: 600;
-    text-align: left;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border-color);
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-td {
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border-color);
-    color: var(--text-color);
-    font-size: 0.95rem;
-}
-
-tr:last-child td {
-    border-bottom: none;
 }
 
 tr:hover {
     background-color: var(--table-row-hover);
-}
-
-/* --- CAMBIO: Módulo de Precios y Buscador Corregido --- */
-.filters-container {
-    display: flex;
-    gap: 15px;
-    margin-bottom: 20px;
-    background: var(--card-bg);
-    padding: 15px;
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-    align-items: center;
-    /* Centrar verticalmente */
-}
-
-/* Select de empresa (ancho fijo razonable) */
-.filters-container select {
-    min-width: 200px;
-}
-
-/* Input del buscador (Ocupar todo el espacio restante) */
-.filters-container input {
-    flex: 1;
-    /* Esto hace que se expanda horizontalmente */
-    width: auto;
 }
 
 .price-input {
@@ -590,7 +788,7 @@ tr:hover {
 
 
 /* =========================================
-   7. MODALES (NUEVO DISEÑO CORREGIDO)
+   6. MODALES Y ANIMACIONES
    ========================================= */
 .modal {
     display: none;
@@ -600,19 +798,17 @@ tr:hover {
     top: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(2px);
 }
 
 .modal-content {
-    background-color: var(--card-bg);
+    background: var(--card-bg);
     margin: 5% auto;
-    padding: 0;
     border: 1px solid var(--border-color);
     width: 400px;
     border-radius: 12px;
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-    animation: slideDown 0.3s ease-out;
+    animation: slideDown 0.3s;
 }
 
 @keyframes slideDown {
@@ -636,12 +832,9 @@ tr:hover {
     align-items: center;
 }
 
-/* --- CAMBIO: Botón Cerrar (X) del Modal Corregido --- */
 .close {
     font-size: 2rem;
-    /* Tamaño adecuado */
     line-height: 1;
-    /* Evita que flote raro */
     cursor: pointer;
     color: var(--text-secondary);
     transition: 0.2s;
@@ -667,9 +860,9 @@ form label {
 }
 
 .modal-actions {
-    margin-top: 10px;
     display: flex;
     gap: 10px;
+    margin-top: 10px;
 }
 
 .modal-actions button {
@@ -689,143 +882,76 @@ form label {
     margin: 0;
 }
 
+
 /* =========================================
-   8. ESTILOS REVISIÓN NUBE
+   7. MEDIA QUERIES (RESPONSIVE)
    ========================================= */
 
-/* Ajuste de filtros para que se vean como etiquetas arriba */
-.revision-filters {
-    align-items: flex-start;
-    /* Para alinear con labels */
-    flex-wrap: wrap;
+/* TABLET (iPad) Y MÓVIL (< 1024px) */
+@media (max-width: 1024px) {
+    .sidebar {
+        position: fixed;
+        height: 100%;
+        left: -280px;
+        top: 0;
+        box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+        width: 260px !important;
+    }
+
+    .sidebar.open {
+        transform: translateX(280px);
+    }
+
+    .mobile-menu-btn {
+        display: block;
+    }
+
+    .toggle-btn {
+        display: none;
+    }
+
+    .content {
+        padding-top: 60px;
+    }
+
+    #mobile-overlay.active {
+        display: block;
+    }
 }
 
-.filter-group {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-}
+/* MÓVIL PEQUEÑO (iPhone) (< 768px) */
+@media (max-width: 768px) {
+    .content {
+        padding: 1rem;
+        padding-top: 60px;
+    }
 
-.filter-group label {
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-}
+    .filters-container {
+        flex-direction: column;
+        align-items: stretch;
+    }
 
-/* Grid de Tarjetas */
-.revision-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    /* Responsivo */
-    gap: 20px;
-    margin-top: 20px;
-}
+    .filters-container button {
+        width: 100%;
+        margin-top: 10px;
+    }
 
-.status-card {
-    background: var(--card-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    padding: 20px;
-    box-shadow: var(--shadow);
-    display: flex;
-    flex-direction: column;
-    position: relative;
-    transition: transform 0.2s;
-    min-height: 180px;
-}
+    .dashboard-container {
+        flex-direction: column;
+        overflow-x: visible;
+    }
 
-.status-card:hover {
-    transform: translateY(-3px);
-}
+    .area-column {
+        min-width: 100%;
+    }
 
-/* Header de la Tarjeta */
-.card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 15px;
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: 10px;
-}
+    .modal-content {
+        width: 90%;
+        margin: 10% auto;
+    }
 
-.table-name {
-    font-weight: 800;
-    font-size: 1.1rem;
-    color: var(--text-color);
-    text-transform: uppercase;
-}
-
-/* Semáforo */
-.traffic-light {
-    width: 15px;
-    height: 15px;
-    border-radius: 50%;
-}
-
-.light-green {
-    background-color: var(--green-status);
-    box-shadow: 0 0 8px var(--green-status);
-}
-
-.light-red {
-    background-color: var(--red-status);
-    box-shadow: 0 0 8px var(--red-status);
-}
-
-/* Contenido de Datos */
-.card-data {
-    font-family: 'Consolas', monospace;
-    /* Para que parezca dato técnico */
-    font-size: 0.9rem;
-    color: var(--text-color);
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.data-row span {
-    font-weight: bold;
-    color: var(--text-secondary);
-}
-
-.total-row {
-    margin-top: auto;
-    padding-top: 10px;
-    border-top: 1px dashed var(--border-color);
-    font-weight: bold;
-    font-size: 1rem;
-    text-align: right;
-    color: var(--accent);
-}
-
-/* Estado Vacío (Rojo) */
-.no-data-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    color: var(--text-secondary);
-    text-align: center;
-    gap: 10px;
-}
-
-.no-data-state i {
-    font-size: 2.5rem;
-    color: var(--red-status);
-    opacity: 0.5;
-}
-
-.no-data-text {
-    font-weight: 600;
-    font-size: 1.1rem;
-}
-
-.empty-state-message {
-    width: 100%;
-    text-align: center;
-    color: var(--text-secondary);
-    padding: 40px;
+    .login-container {
+        width: 95%;
+        padding: 1.5rem;
+    }
 }

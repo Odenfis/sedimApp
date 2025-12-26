@@ -1,27 +1,28 @@
-let appData = null; // Variable global para los datos de equipos
+let appData = null;
 
 // ==========================================
-//  INICIO: VALIDACIÓN DE SESIÓN
+//  INICIO: VALIDACIÓN DE SESIÓN Y TEMA
 // ==========================================
 document.addEventListener("DOMContentLoaded", async () => {
     // 1. Aplicar tema guardado
-    /*
-    const savedTheme = localStorage.getItem('theme') || 'dark';
-    document.documentElement.setAttribute('data-theme', savedTheme);
-    updateIcon(savedTheme);*/
-    // Si no hay nada guardado, usamos 'light' por defecto
     const savedTheme = localStorage.getItem('theme') || 'light';
     document.documentElement.setAttribute('data-theme', savedTheme);
     updateIcon(savedTheme);
+
+    // Inicializar fechas en filtros (Revision Nube)
+    const today = new Date().toISOString().split('T')[0];
+    const inputsDate = document.querySelectorAll('input[type="date"]');
+    inputsDate.forEach(input => input.value = today);
+
     try {
-        // 2. Verificar si estamos logueados
+        // 2. Verificar sesión
         const res = await fetch('/api/session');
         if (!res.ok) {
-            window.location.href = '/login.html'; // Si falla, al login
+            window.location.href = '/login.html';
         } else {
-            // 3. Si todo ok, cargamos las dos partes del sistema
-            fetchData();  // Cargar Equipos (JSON)
-            loadUsers();  // Cargar Usuarios (Azure)
+            // 3. Cargar datos iniciales
+            fetchData();  // Equipos
+            loadUsers();  // Usuarios
         }
     } catch (e) {
         window.location.href = '/login.html';
@@ -29,27 +30,74 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 // ==========================================
-//  LÓGICA DEL MENÚ LATERAL (TABS)
+//  NAVEGACIÓN Y SIDEBAR (UNIFICADO)
 // ==========================================
-function showView(viewName) {
-    // Ocultar todas las vistas
-    document.getElementById('view-equipos').style.display = 'none';
-    document.getElementById('view-usuarios').style.display = 'none';
 
-    // Quitar clase active del menú
+// Función UNIFICADA para cambiar vistas
+function showView(viewName) {
+    // 1. Ocultar todas las vistas
+    const views = ['view-equipos', 'view-usuarios', 'view-precios', 'view-revision'];
+    views.forEach(v => {
+        const el = document.getElementById(v);
+        if (el) el.style.display = 'none';
+    });
+
+    // 2. Resetear clases 'active' del menú
     document.querySelectorAll('.sidebar li').forEach(li => li.classList.remove('active'));
 
-    // Activar la seleccionada
-    if (viewName === 'equipos') {
-        document.getElementById('view-equipos').style.display = 'block';
-        // Asumiendo que es el primer LI
-        document.querySelectorAll('.sidebar li')[0].classList.add('active');
-    } else {
-        document.getElementById('view-usuarios').style.display = 'block';
-        // Asumiendo que es el segundo LI
-        document.querySelectorAll('.sidebar li')[1].classList.add('active');
+    // 3. Mapeo para activar el item correcto del menú
+    const menuIndex = {
+        'equipos': 0,
+        'usuarios': 1,
+        'precios': 2,
+        'revision': 3
+    };
+
+    // 4. Mostrar vista deseada
+    const targetView = document.getElementById(`view-${viewName}`);
+    if (targetView) {
+        targetView.style.display = 'block';
+        // Activar item en sidebar
+        const items = document.querySelectorAll('.sidebar ul li'); // Solo los LI de la lista UL
+        if (items[menuIndex[viewName]]) {
+            items[menuIndex[viewName]].classList.add('active');
+        }
     }
 }
+
+// Lógica Sidebar Dinámico y Responsivo
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('mobile-overlay');
+    const isMobile = window.innerWidth <= 1024;
+
+    if (isMobile) {
+        // Móvil: Slide in/out
+        sidebar.classList.toggle('open');
+        overlay.classList.toggle('active');
+    } else {
+        // Escritorio: Colapsar ancho
+        sidebar.classList.toggle('collapsed');
+
+        // Cambiar icono flecha/hamburguesa
+        const icon = document.querySelector('.toggle-btn i');
+        if (sidebar.classList.contains('collapsed')) {
+            icon.classList.remove('fa-bars');
+            icon.classList.add('fa-arrow-right');
+        } else {
+            icon.classList.remove('fa-arrow-right');
+            icon.classList.add('fa-bars');
+        }
+    }
+}
+
+// Cerrar menú móvil al redimensionar ventana
+window.addEventListener('resize', () => {
+    if (window.innerWidth > 1024) {
+        document.getElementById('sidebar').classList.remove('open');
+        document.getElementById('mobile-overlay').classList.remove('active');
+    }
+});
 
 async function logout() {
     await fetch('/api/logout', { method: 'POST' });
@@ -57,9 +105,8 @@ async function logout() {
 }
 
 // ==========================================
-//  PARTE 1: CONTROL DE EQUIPOS (JSON)
+//  PARTE 1: CONTROL DE EQUIPOS
 // ==========================================
-
 async function fetchData() {
     try {
         const response = await fetch('/api/data');
@@ -70,11 +117,10 @@ async function fetchData() {
 
 function renderDashboard() {
     const container = document.getElementById("dashboard");
-    if (!container) return; // Si no existe el div, salir
+    if (!container) return;
     container.innerHTML = "";
 
     appData.areas.forEach((area, areaIdx) => {
-        // Columna de Área
         const areaCol = document.createElement("div");
         areaCol.className = "area-column";
 
@@ -83,12 +129,9 @@ function renderDashboard() {
         areaTitle.innerText = area.name;
         areaCol.appendChild(areaTitle);
 
-        // Sedes
         area.locations.forEach((loc, locIdx) => {
             const locCard = document.createElement("div");
             locCard.className = "location-card";
-
-            // Header Sede
             locCard.innerHTML = `
                 <div class="location-header-top">
                     <span class="location-name">${loc.name}</span>
@@ -99,7 +142,6 @@ function renderDashboard() {
                 </div>
             `;
 
-            // Grid de Computadoras
             const grid = document.createElement("div");
             grid.className = "computer-grid";
 
@@ -107,26 +149,20 @@ function renderDashboard() {
                 const item = document.createElement("div");
                 item.className = "computer-item";
                 item.onclick = () => openCompModal(areaIdx, locIdx, compIdx);
-
                 const iconClass = comp.type === 'server' ? 'fa-server' : 'fa-desktop';
                 const statusClass = comp.status ? 'status-true' : 'status-false';
-
                 item.innerHTML = `
                     <div class="icon-wrapper"><i class="fas ${iconClass}"></i></div>
                     <div class="status-indicator ${statusClass}"><span class="dot"></span></div>
-                    <div class="comp-info">
-                        <span class="comp-name">${comp.name}</span>
-                        <span class="comp-host">${comp.hostname}</span>
-                    </div>
+                    <div class="comp-info"><span class="comp-name">${comp.name}</span><span class="comp-host">${comp.hostname}</span></div>
                 `;
                 grid.appendChild(item);
             });
-
             locCard.appendChild(grid);
             areaCol.appendChild(locCard);
         });
 
-        // Botón Agregar Sede
+        // Botón agregar sede
         const btnAddSede = document.createElement("button");
         btnAddSede.innerText = "+ Nueva Sede";
         btnAddSede.style.cssText = "background:transparent; border:2px dashed var(--border-color); color:var(--text-secondary); width:100%; padding:10px; cursor:pointer;";
@@ -137,9 +173,11 @@ function renderDashboard() {
     });
 }
 
-// --- MODAL EQUIPOS ---
+// --- MODALES EQUIPOS Y SEDES ---
 const modalComp = document.getElementById("modal-comp");
 const formComp = document.getElementById("computer-form");
+const modalSede = document.getElementById("modal-sede");
+const formSede = document.getElementById("sede-form");
 
 function openCompModal(areaIdx, locIdx, compIdx) {
     if (!modalComp) return;
@@ -155,7 +193,6 @@ function openCompModal(areaIdx, locIdx, compIdx) {
         document.getElementById("comp-type").value = comp.type;
         document.getElementById("comp-status").checked = comp.status;
         indicesInput.value = `${areaIdx},${locIdx},${compIdx}`;
-
         deleteBtn.style.display = "block";
         deleteBtn.onclick = () => deleteComputer(areaIdx, locIdx, compIdx);
     } else {
@@ -172,7 +209,6 @@ if (formComp) {
     formComp.onsubmit = async (e) => {
         e.preventDefault();
         const [areaIdx, locIdx, compIdx] = document.getElementById("comp-indices").value.split(',');
-
         const newComp = {
             id: Date.now(),
             name: document.getElementById("comp-name").value,
@@ -180,11 +216,9 @@ if (formComp) {
             type: document.getElementById("comp-type").value,
             status: document.getElementById("comp-status").checked
         };
-
         if (compIdx === 'new') {
             appData.areas[areaIdx].locations[locIdx].computers.push(newComp);
         } else {
-            // Preservar ID si es edición
             newComp.id = appData.areas[areaIdx].locations[locIdx].computers[compIdx].id;
             appData.areas[areaIdx].locations[locIdx].computers[compIdx] = newComp;
         }
@@ -200,10 +234,6 @@ async function deleteComputer(areaIdx, locIdx, compIdx) {
         modalComp.style.display = "none";
     }
 }
-
-// --- MODAL SEDES ---
-const modalSede = document.getElementById("modal-sede");
-const formSede = document.getElementById("sede-form");
 
 function openSedeModal(areaIdx, locIdx) {
     if (!modalSede) return;
@@ -234,7 +264,6 @@ if (formSede) {
         const areaIdx = indices[0];
         const locIdx = indices[1];
         const name = document.getElementById("sede-name").value;
-
         if (locIdx === 'new') {
             appData.areas[areaIdx].locations.push({ name: name, computers: [] });
         } else {
@@ -262,14 +291,11 @@ async function saveData() {
     renderDashboard();
 }
 
-// Utilidad para cerrar modales
-function closeModal(id) {
-    document.getElementById(id).style.display = "none";
-}
+function closeModal(id) { document.getElementById(id).style.display = "none"; }
 
 
 // ==========================================
-//  PARTE 2: USUARIOS (AZURE SQL)
+//  PARTE 2: USUARIOS
 // ==========================================
 async function loadUsers() {
     try {
@@ -278,26 +304,16 @@ async function loadUsers() {
         const users = await res.json();
         const tbody = document.querySelector('#users-table tbody');
         if (!tbody) return;
-
         tbody.innerHTML = '';
         users.forEach(u => {
             const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${u.id}</td>
-                <td>${u.usuario}</td>
-                <td>${u.nombre}</td>
-                <td><button class="btn-delete" style="padding:5px 10px;" onclick="deleteUser(${u.id})">Eliminar</button></td>
-            `;
+            tr.innerHTML = `<td>${u.id}</td><td>${u.usuario}</td><td>${u.nombre}</td><td><button class="btn-delete" style="padding:5px 10px;" onclick="deleteUser(${u.id})">Eliminar</button></td>`;
             tbody.appendChild(tr);
         });
     } catch (e) { console.error("Error usuarios", e); }
 }
 
-function openUserModal() {
-    const m = document.getElementById('modal-user');
-    if (m) m.style.display = 'block';
-}
-
+function openUserModal() { document.getElementById('modal-user').style.display = 'block'; }
 const formUser = document.getElementById('user-form');
 if (formUser) {
     formUser.onsubmit = async (e) => {
@@ -305,115 +321,40 @@ if (formUser) {
         const usuario = document.getElementById('u-user').value;
         const password = document.getElementById('u-pass').value;
         const nombre = document.getElementById('u-name').value;
-
-        const res = await fetch('/api/users', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ usuario, password, nombre })
-        });
-
-        if (res.ok) {
-            closeModal('modal-user');
-            formUser.reset();
-            loadUsers();
-            alert('Usuario creado');
-        } else {
-            alert('Error al crear usuario');
-        }
+        const res = await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ usuario, password, nombre }) });
+        if (res.ok) { closeModal('modal-user'); formUser.reset(); loadUsers(); alert('Usuario creado'); } else { alert('Error al crear usuario'); }
     };
 }
-
-async function deleteUser(id) {
-    if (confirm('¿Borrar usuario?')) {
-        await fetch(`/api/users/${id}`, { method: 'DELETE' });
-        loadUsers();
-    }
-}
-
+async function deleteUser(id) { if (confirm('¿Borrar usuario?')) { await fetch(`/api/users/${id}`, { method: 'DELETE' }); loadUsers(); } }
 
 // ==========================================
 //  PARTE 3: TEMA CLARO/OSCURO
 // ==========================================
 function toggleTheme() {
-    /*    
     const html = document.documentElement;
-    const current = html.getAttribute('data-theme');
-    const target = current === 'light' ? 'dark' : 'light';
-    html.setAttribute('data-theme', target);
-    localStorage.setItem('theme', target);
-    updateIcon(target);*/
-    const html = document.documentElement;
-    // Obtener tema actual (si no tiene atributo, asumimos light)
     const current = html.getAttribute('data-theme') || 'light';
-    // Si es light pasamos a dark, si es dark pasamos a light
     const target = current === 'light' ? 'dark' : 'light';
-
     html.setAttribute('data-theme', target);
     localStorage.setItem('theme', target);
     updateIcon(target);
 }
-
 function updateIcon(theme) {
-    /*
     const icon = document.getElementById('theme-icon');
     if (!icon) return;
-    if (theme === 'light') {
-        icon.classList.remove('fa-sun');
-        icon.classList.add('fa-moon');
-    } else {
-        icon.classList.remove('fa-moon');
-        icon.classList.add('fa-sun');
-    }*/
-    const icon = document.getElementById('theme-icon');
-    if (!icon) return;
-    // Si el tema es CLARO, mostramos una LUNA (para ir a oscuro)
-    // Si el tema es OSCURO, mostramos un SOL (para ir a claro)
-    if (theme === 'light') {
-        icon.className = 'fas fa-moon';
-    } else {
-        icon.className = 'fas fa-sun';
-    }
+    if (theme === 'light') icon.className = 'fas fa-moon';
+    else icon.className = 'fas fa-sun';
 }
 
 // ==========================================
 //  MÓDULO: CAMBIO DE PRECIOS
 // ==========================================
-
-// Actualizar la función showView para incluir 'precios'
-const originalShowView = showView; // Guardamos referencia si quieres, o reescribimos:
-
-function showView(viewName) {
-    // Ocultar todas
-    document.getElementById('view-equipos').style.display = 'none';
-    document.getElementById('view-usuarios').style.display = 'none';
-    document.getElementById('view-precios').style.display = 'none';
-
-    // Resetear clases active
-    document.querySelectorAll('.sidebar li').forEach(li => li.classList.remove('active'));
-
-    // Lógica de activación
-    if (viewName === 'equipos') {
-        document.getElementById('view-equipos').style.display = 'block';
-        document.querySelectorAll('.sidebar li')[0].classList.add('active');
-    } else if (viewName === 'usuarios') {
-        document.getElementById('view-usuarios').style.display = 'block';
-        document.querySelectorAll('.sidebar li')[1].classList.add('active');
-    } else if (viewName === 'precios') {
-        document.getElementById('view-precios').style.display = 'block';
-        document.querySelectorAll('.sidebar li')[2].classList.add('active'); // Asumiendo que es el 3ro
-    }
-}
-
-// 1. Cargar productos desde Azure al seleccionar empresa
 async function cargarProductosPrecios() {
     const empresa = document.getElementById('empresa-select').value;
     const tbody = document.querySelector('#precios-table tbody');
     tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">Cargando productos...</td></tr>';
-
     try {
         const res = await fetch(`/api/precios/${empresa}`);
         if (!res.ok) throw new Error('Error al cargar');
-
         const productos = await res.json();
         renderTablaPrecios(productos);
     } catch (error) {
@@ -421,81 +362,38 @@ async function cargarProductosPrecios() {
         tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--red-status);">Error cargando datos</td></tr>';
     }
 }
-
-// 2. Renderizar la tabla con inputs editables
-let productosCache = []; // Para el buscador local
-
 function renderTablaPrecios(lista) {
-    productosCache = lista; // Guardamos para filtrar luego
     const tbody = document.querySelector('#precios-table tbody');
     tbody.innerHTML = '';
-
-    if (lista.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">No se encontraron productos tipo 3.</td></tr>';
-        return;
-    }
-
+    if (lista.length === 0) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">No se encontraron productos tipo 3.</td></tr>'; return; }
     lista.forEach(p => {
         const tr = document.createElement('tr');
-        // Formatear valores nulos a 0
-        const p1 = p.PreTema1 || 0;
-        const p2 = p.PreTema2 || 0;
-        const p3 = p.PreTema3 || 0;
-        const p4 = p.PreTema4 || 0;
-        const p5 = p.PreTema5 || 0;
-        const p6 = p.PreTema6 || 0;
-
+        const p1 = p.PreTema1 || 0; const p2 = p.PreTema2 || 0; const p3 = p.PreTema3 || 0;
+        const p4 = p.PreTema4 || 0; const p5 = p.PreTema5 || 0; const p6 = p.PreTema6 || 0;
         tr.innerHTML = `
-            <td>
-                <span style="font-weight:bold; font-size:0.85rem; color:var(--text-secondary)">${p.CodPro}</span><br>
-                ${p.Nombre}
-            </td>
+            <td><span style="font-weight:bold; font-size:0.85rem; color:var(--text-secondary)">${p.CodPro}</span><br>${p.Nombre}</td>
             <td><input type="number" step="0.01" class="price-input" id="p1-${p.CodPro}" value="${p1}"></td>
             <td><input type="number" step="0.01" class="price-input" id="p2-${p.CodPro}" value="${p2}"></td>
             <td><input type="number" step="0.01" class="price-input" id="p3-${p.CodPro}" value="${p3}"></td>
             <td><input type="number" step="0.01" class="price-input" id="p4-${p.CodPro}" value="${p4}"></td>
             <td><input type="number" step="0.01" class="price-input" id="p5-${p.CodPro}" value="${p5}"></td>
             <td><input type="number" step="0.01" class="price-input" id="p6-${p.CodPro}" value="${p6}"></td>
-            <td>
-                <button class="btn-update" onclick="guardarPrecio('${p.CodPro}')">
-                    <i class="fas fa-save"></i>
-                </button>
-            </td>
+            <td><button class="btn-update" onclick="guardarPrecio('${p.CodPro}')"><i class="fas fa-save"></i></button></td>
         `;
         tbody.appendChild(tr);
     });
 }
-
-// 3. Filtrar localmente por nombre o código (Buscador CORREGIDO)
 function filtrarTablaPrecios() {
-    // 1. Obtener el texto que escribió el usuario
-    const input = document.getElementById('search-product');
-    const texto = input.value.toLowerCase().trim();
-
-    // 2. Seleccionar todas las filas de la tabla de precios
+    const texto = document.getElementById('search-product').value.toLowerCase().trim();
     const filas = document.querySelectorAll('#precios-table tbody tr');
-
-    // 3. Recorrer cada fila para decidir si se muestra u oculta
     filas.forEach(fila => {
-        // Obtenemos la primera celda (td) que contiene Código y Nombre
         const celdaProducto = fila.cells[0];
-
-        // Validación por si es una fila de "Cargando..." o vacía
         if (celdaProducto) {
-            // Obtener todo el texto dentro de esa celda
             const contenido = celdaProducto.textContent || celdaProducto.innerText;
-
-            // Verificamos si el texto buscado está dentro del contenido
-            if (contenido.toLowerCase().includes(texto)) {
-                fila.style.display = ''; // Mostrar (quita el display:none)
-            } else {
-                fila.style.display = 'none'; // Ocultar
-            }
+            fila.style.display = contenido.toLowerCase().includes(texto) ? '' : 'none';
         }
     });
 }
-
-// 4. Guardar cambios en Azure
 async function guardarPrecio(codPro) {
     const p1 = document.getElementById(`p1-${codPro}`).value;
     const p2 = document.getElementById(`p2-${codPro}`).value;
@@ -503,153 +401,54 @@ async function guardarPrecio(codPro) {
     const p4 = document.getElementById(`p4-${codPro}`).value;
     const p5 = document.getElementById(`p5-${codPro}`).value;
     const p6 = document.getElementById(`p6-${codPro}`).value;
-
-    const btn = event.currentTarget; // El botón presionado
-    const icono = btn.querySelector('i');
-
-    // Efecto visual de carga
+    const btn = event.currentTarget; const icono = btn.querySelector('i');
     icono.className = "fas fa-spinner fa-spin";
-
     try {
-        const res = await fetch(`/api/precios/${codPro}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ p1, p2, p3, p4, p5, p6 })
-        });
-
+        const res = await fetch(`/api/precios/${codPro}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ p1, p2, p3, p4, p5, p6 }) });
         if (res.ok) {
-            // Efecto de éxito visual
-            icono.className = "fas fa-check";
-            btn.style.backgroundColor = "var(--green-status)";
-            setTimeout(() => {
-                icono.className = "fas fa-save";
-                btn.style.backgroundColor = "var(--accent)";
-            }, 1500);
-        } else {
-            alert("Error al guardar");
-            icono.className = "fas fa-save";
-        }
-    } catch (e) {
-        console.error(e);
-        alert("Error de conexión");
-        icono.className = "fas fa-save";
-    }
+            icono.className = "fas fa-check"; btn.style.backgroundColor = "var(--green-status)";
+            setTimeout(() => { icono.className = "fas fa-save"; btn.style.backgroundColor = "var(--accent)"; }, 1500);
+        } else { alert("Error al guardar"); icono.className = "fas fa-save"; }
+    } catch (e) { alert("Error de conexión"); icono.className = "fas fa-save"; }
 }
 
 // ==========================================
 //  MÓDULO: REVISIÓN NUBE
 // ==========================================
-
-// Actualiza showView para incluir 'revision'
-// (Reemplaza tu función showView actual con esta)
-function showView(viewName) {
-    // Ocultar todas
-    const views = ['view-equipos', 'view-usuarios', 'view-precios', 'view-revision'];
-    views.forEach(v => document.getElementById(v).style.display = 'none');
-
-    // Resetear menu
-    document.querySelectorAll('.sidebar li').forEach(li => li.classList.remove('active'));
-
-    // Mapeo índice menú -> vista
-    const menuIndex = {
-        'equipos': 0,
-        'usuarios': 1,
-        'precios': 2,
-        'revision': 3
-    };
-
-    if (document.getElementById(`view-${viewName}`)) {
-        document.getElementById(`view-${viewName}`).style.display = 'block';
-        if (document.querySelectorAll('.sidebar li')[menuIndex[viewName]]) {
-            document.querySelectorAll('.sidebar li')[menuIndex[viewName]].classList.add('active');
-        }
-    }
-}
-
-// Inicializar fechas por defecto (Hoy)
-document.addEventListener("DOMContentLoaded", () => {
-    // ... tu lógica existente ...
-    const today = new Date().toISOString().split('T')[0];
-    const inputsDate = document.querySelectorAll('input[type="date"]');
-    inputsDate.forEach(input => input.value = today);
-});
-
 async function consultarRevision() {
     const empresa = document.getElementById('rev-empresa').value;
     const turno = document.getElementById('rev-turno').value;
     const inicio = document.getElementById('rev-inicio').value;
     const fin = document.getElementById('rev-fin').value;
-
     const grid = document.getElementById('revision-grid');
     grid.innerHTML = '<div style="width:100%; text-align:center;"><i class="fas fa-spinner fa-spin fa-3x"></i><br>Consultando Nube...</div>';
-
     try {
-        const res = await fetch('/api/revision-nube', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ empresa, turno, fechaInicio: inicio, fechaFin: fin })
-        });
-
+        const res = await fetch('/api/revision-nube', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ empresa, turno, fechaInicio: inicio, fechaFin: fin }) });
         if (!res.ok) throw new Error('Error en consulta');
-
         const data = await res.json();
         renderRevisionCards(data);
-
-    } catch (error) {
-        console.error(error);
-        grid.innerHTML = '<div style="color:var(--red-status); text-align:center;">Error al consultar datos</div>';
-    }
+    } catch (error) { grid.innerHTML = '<div style="color:var(--red-status); text-align:center;">Error al consultar datos</div>'; }
 }
-
 function renderRevisionCards(data) {
     const grid = document.getElementById('revision-grid');
-    grid.innerHTML = ''; // Limpiar
-
-    // Array de configuración para iterar y crear tarjetas
+    grid.innerHTML = '';
     const tables = [
-        { key: 'doccab', title: 'Doccab' },
-        { key: 'docdet', title: 'Docdet' },
-        { key: 'ticket_c', title: 'Ticket_C' },
-        { key: 'ticket_d', title: 'Ticket_D' },
-        { key: 'pagos', title: 'Pagos Tickets' },
-        { key: 'caja', title: 'Caja' }
+        { key: 'doccab', title: 'Doccab' }, { key: 'docdet', title: 'Docdet' },
+        { key: 'ticket_c', title: 'Ticket_C' }, { key: 'ticket_d', title: 'Ticket_D' },
+        { key: 'pagos', title: 'Pagos Tickets' }, { key: 'caja', title: 'Caja' }
     ];
-
     tables.forEach(t => {
         const info = data[t.key] || { Total: 0 };
         const hasData = info.Total > 0;
-
         const card = document.createElement('div');
         card.className = 'status-card';
-
-        // Determinar contenido
         let contentHTML = '';
         if (hasData) {
-            contentHTML = `
-                <div class="card-data">
-                    <div class="data-row"><span>INICIO:</span> ${info.First}</div>
-                    <div class="data-row"><span>FIN:</span> ${info.Last}</div>
-                    <div class="total-row">REGISTROS: ${info.Total} FILAS</div>
-                </div>
-            `;
+            contentHTML = `<div class="card-data"><div class="data-row"><span>INICIO:</span> ${info.First}</div><div class="data-row"><span>FIN:</span> ${info.Last}</div><div class="total-row">REGISTROS: ${info.Total} FILAS</div></div>`;
         } else {
-            contentHTML = `
-                <div class="no-data-state">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    <span class="no-data-text">NO HAY REGISTROS</span>
-                    <i class="fas fa-person-walking"></i> <!-- Dibujo estilo stickman -->
-                </div>
-            `;
+            contentHTML = `<div class="no-data-state"><i class="fas fa-exclamation-triangle"></i><span class="no-data-text">NO HAY REGISTROS</span><i class="fas fa-person-walking"></i></div>`;
         }
-
-        card.innerHTML = `
-            <div class="card-header">
-                <span class="table-name">${t.title}</span>
-                <div class="traffic-light ${hasData ? 'light-green' : 'light-red'}"></div>
-            </div>
-            ${contentHTML}
-        `;
-
+        card.innerHTML = `<div class="card-header"><span class="table-name">${t.title}</span><div class="traffic-light ${hasData ? 'light-green' : 'light-red'}"></div></div>${contentHTML}`;
         grid.appendChild(card);
     });
 }
