@@ -33,8 +33,7 @@
 
     /* Variables de Dimensiones Sidebar */
     --sidebar-width: 260px;
-    --sidebar-width-collapsed: 80px;
-    /* Un poco más ancho para que se vea bien colapsado */
+    --sidebar-width-collapsed: 70px;
 }
 
 [data-theme="dark"] {
@@ -141,14 +140,21 @@ button {
     background: transparent;
     border: 1px solid var(--border-color);
     color: var(--text-color);
+
+    /* Reseteo Absoluto */
     padding: 0;
-    margin: 0 auto;
-    /* Auto margin para centrar horizontalmente */
+    margin: 0;
+
+    /* Dimensiones Fijas */
     width: 38px;
     height: 38px;
     border-radius: 50%;
+
+    /* CENTRADO PERFECTO USANDO GRID */
     display: grid;
     place-items: center;
+    place-content: center;
+
     cursor: pointer;
     transition: all 0.2s ease;
 }
@@ -159,12 +165,12 @@ button {
 }
 
 .theme-toggle i {
+    /* El icono se comporta como bloque y ocupa solo lo necesario */
     display: block;
     font-size: 1.1rem;
     line-height: 1;
     margin: 0 !important;
     padding: 0 !important;
-    width: auto;
 }
 
 
@@ -242,7 +248,7 @@ button {
 
 
 /* =========================================
-   4. SIDEBAR (MENU LATERAL) - REDISEÑADO
+   4. SIDEBAR (MENU LATERAL)
    ========================================= */
 .main-layout {
     display: flex;
@@ -255,8 +261,7 @@ button {
 .sidebar {
     width: var(--sidebar-width);
     background: var(--sidebar-bg);
-    padding: 20px 15px;
-    /* Padding interno más balanceado */
+    padding: 20px 10px;
     border-right: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
@@ -270,44 +275,35 @@ button {
     flex-direction: column;
     gap: 15px;
     margin-bottom: 2rem;
-    width: 100%;
+    align-items: center;
 }
 
-/* --- CAMBIO: Header con Space-Between --- */
+/* --- HEADER: Botón pegado a la izquierda --- */
 .brand-container {
     display: flex;
-    justify-content: space-between;
-    /* Texto izquierda, Botón derecha */
-    align-items: center;
+    justify-content: flex-start;
+    /* Alineado a la izquierda */
+    gap: 15px;
     width: 100%;
-    height: 40px;
+    align-items: center;
+    padding: 0 10px;
 }
 
 .brand {
     color: var(--text-color);
-    font-size: 1.2rem;
+    font-size: 1.25rem;
     font-weight: 800;
     white-space: nowrap;
     overflow: hidden;
     transition: opacity 0.2s;
 }
 
-/* Botón Hamburguesa/Flecha */
 .toggle-btn {
     background: transparent;
     color: var(--text-secondary);
-    font-size: 1.3rem;
+    font-size: 1.2rem;
     padding: 5px;
     cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 4px;
-}
-
-.toggle-btn:hover {
-    background: var(--sidebar-active);
-    color: var(--accent);
 }
 
 /* Lista Menú */
@@ -360,7 +356,6 @@ button {
 /* --- ESTADO COLAPSADO (SOLO ESCRITORIO) --- */
 .sidebar.collapsed {
     width: var(--sidebar-width-collapsed);
-    padding: 20px 10px;
 }
 
 .sidebar.collapsed .brand,
@@ -369,9 +364,9 @@ button {
     opacity: 0;
 }
 
-/* Cuando está colapsado, centramos todo */
 .sidebar.collapsed .brand-container {
     justify-content: center;
+    padding: 0;
 }
 
 .sidebar.collapsed .toggle-btn {
@@ -387,7 +382,7 @@ button {
     margin-right: 0;
 }
 
-/* Botón Hamburguesa Móvil (Visible solo en responsive) */
+/* Botón Hamburguesa Móvil */
 .mobile-menu-btn {
     display: none;
     position: absolute;
@@ -400,7 +395,6 @@ button {
     font-size: 1.2rem;
     color: var(--text-color);
     box-shadow: var(--shadow);
-    border-radius: 6px;
 }
 
 #mobile-overlay {
@@ -530,7 +524,6 @@ button {
     display: flex;
     flex-wrap: wrap;
     gap: 20px;
-    /* Más espacio */
     margin-top: 15px;
     justify-content: flex-start;
 }
@@ -540,7 +533,6 @@ button {
     flex-direction: column;
     align-items: center;
     width: 100px;
-    /* Ancho suficiente para texto */
     cursor: pointer;
     transition: transform 0.2s;
     padding: 10px;
@@ -767,27 +759,16 @@ tr:hover {
     background-color: var(--table-row-hover);
 }
 
+/* --- INPUTS DE PRECIO CON 4 DECIMALES --- */
 .price-input {
     width: 110px;
-    /* <--- AUMENTADO (Antes 70px) */
-    padding: 8px 5px;
-    /* Un poco más de espacio vertical */
-    border: 1px solid var(--border-color);
-    background: var(--bg-color);
-    color: var(--text-color);
-    border-radius: 4px;
+    /* Ancho aumentado para que entren 4 decimales */
+    padding: 6px;
     text-align: right;
-    /* Importante: Números alineados a la derecha */
-    font-size: 0.95rem;
-    /* Letra un poco más legible */
-}
-
-/* Efecto al hacer clic en la caja */
-.price-input:focus {
-    border-color: var(--accent);
-    background: var(--input-bg);
-    outline: none;
-    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    font-variant-numeric: tabular-nums;
+    /* Alineación numérica perfecta */
 }
 
 .btn-update {
@@ -934,6 +915,32 @@ form label {
     }
 }
 
+/* FIX IPAD / TABLET FILTERS: EVITAR SUPERPOSICIÓN DEL BOTÓN */
+/* En pantallas medianas (Tablets/iPad), convertimos la barra de filtros en Grid */
+@media (max-width: 1200px) {
+    .revision-filters {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        /* 2 columnas */
+        gap: 15px;
+        align-items: end;
+    }
+
+    /* El botón toma todo el ancho abajo */
+    .revision-filters button {
+        grid-column: 1 / -1;
+        width: 100% !important;
+        margin-top: 10px;
+    }
+
+    /* Aseguramos que los inputs no se desborden */
+    .revision-filters input,
+    .revision-filters select {
+        width: 100%;
+        min-width: 0;
+    }
+}
+
 /* MÓVIL PEQUEÑO (iPhone) (< 768px) */
 @media (max-width: 768px) {
     .content {
@@ -949,6 +956,11 @@ form label {
     .filters-container button {
         width: 100%;
         margin-top: 10px;
+    }
+
+    /* El grid de revisión también se hace 1 sola columna */
+    .revision-filters {
+        grid-template-columns: 1fr;
     }
 
     .dashboard-container {
