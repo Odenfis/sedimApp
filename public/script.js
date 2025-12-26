@@ -368,8 +368,14 @@ function renderTablaPrecios(lista) {
     if (lista.length === 0) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">No se encontraron productos tipo 3.</td></tr>'; return; }
     lista.forEach(p => {
         const tr = document.createElement('tr');
-        const p1 = p.PreTema1 || 0; const p2 = p.PreTema2 || 0; const p3 = p.PreTema3 || 0;
-        const p4 = p.PreTema4 || 0; const p5 = p.PreTema5 || 0; const p6 = p.PreTema6 || 0;
+        //const p1 = p.PreTema1 || 0; const p2 = p.PreTema2 || 0; const p3 = p.PreTema3 || 0;
+        //const p4 = p.PreTema4 || 0; const p5 = p.PreTema5 || 0; const p6 = p.PreTema6 || 0;
+        const p1 = (p.PreTema1 || 0).toFixed(4);
+        const p2 = (p.PreTema2 || 0).toFixed(4);
+        const p3 = (p.PreTema3 || 0).toFixed(4);
+        const p4 = (p.PreTema4 || 0).toFixed(4);
+        const p5 = (p.PreTema5 || 0).toFixed(4);
+        const p6 = (p.PreTema6 || 0).toFixed(4);
         tr.innerHTML = `
             <td><span style="font-weight:bold; font-size:0.85rem; color:var(--text-secondary)">${p.CodPro}</span><br>${p.Nombre}</td>
             <td><input type="number" step="0.01" class="price-input" id="p1-${p.CodPro}" value="${p1}"></td>

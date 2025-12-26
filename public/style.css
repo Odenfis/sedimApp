@@ -768,11 +768,26 @@ tr:hover {
 }
 
 .price-input {
-    width: 80px;
-    padding: 6px;
-    text-align: right;
-    background: var(--bg-color);
+    width: 110px;
+    /* <--- AUMENTADO (Antes 70px) */
+    padding: 8px 5px;
+    /* Un poco más de espacio vertical */
     border: 1px solid var(--border-color);
+    background: var(--bg-color);
+    color: var(--text-color);
+    border-radius: 4px;
+    text-align: right;
+    /* Importante: Números alineados a la derecha */
+    font-size: 0.95rem;
+    /* Letra un poco más legible */
+}
+
+/* Efecto al hacer clic en la caja */
+.price-input:focus {
+    border-color: var(--accent);
+    background: var(--input-bg);
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
 }
 
 .btn-update {
