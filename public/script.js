@@ -15,112 +15,75 @@ document.addEventListener("DOMContentLoaded", async () => {
     inputsDate.forEach(input => input.value = today);
 
     try {
-        // 2. Verificar sesión
         const res = await fetch('/api/session');
-        if (!res.ok) {
-            window.location.href = '/login.html';
-        } else {
-            // 3. Cargar datos iniciales
-            fetchData();  // Equipos
-            loadUsers();  // Usuarios
+        if (!res.ok) window.location.href = '/login.html';
+        else {
+            fetchData();  // Cargar Equipos (SQL)
+            loadUsers();
         }
-    } catch (e) {
-        window.location.href = '/login.html';
-    }
+    } catch (e) { window.location.href = '/login.html'; }
 });
 
 // ==========================================
-//  NAVEGACIÓN Y SIDEBAR (UNIFICADO)
+//  NAVEGACIÓN
 // ==========================================
-
-// Función UNIFICADA para cambiar vistas
 function showView(viewName) {
-    // 1. Ocultar todas las vistas
     const views = ['view-equipos', 'view-usuarios', 'view-precios', 'view-revision'];
-    views.forEach(v => {
-        const el = document.getElementById(v);
-        if (el) el.style.display = 'none';
-    });
-
-    // 2. Resetear clases 'active' del menú
+    views.forEach(v => { const el = document.getElementById(v); if (el) el.style.display = 'none'; });
     document.querySelectorAll('.sidebar li').forEach(li => li.classList.remove('active'));
 
-    // 3. Mapeo para activar el item correcto del menú
-    const menuIndex = {
-        'equipos': 0,
-        'usuarios': 1,
-        'precios': 2,
-        'revision': 3
-    };
-
-    // 4. Mostrar vista deseada
+    const menuIndex = { 'equipos': 0, 'usuarios': 1, 'precios': 2, 'revision': 3 };
     const targetView = document.getElementById(`view-${viewName}`);
     if (targetView) {
         targetView.style.display = 'block';
-        // Activar item en sidebar
-        const items = document.querySelectorAll('.sidebar ul li'); // Solo los LI de la lista UL
-        if (items[menuIndex[viewName]]) {
-            items[menuIndex[viewName]].classList.add('active');
-        }
+        const items = document.querySelectorAll('.sidebar ul li');
+        if (items[menuIndex[viewName]]) items[menuIndex[viewName]].classList.add('active');
     }
 }
 
-// Lógica Sidebar Dinámico y Responsivo
 function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('mobile-overlay');
     const isMobile = window.innerWidth <= 1024;
-
     if (isMobile) {
-        // Móvil: Slide in/out
         sidebar.classList.toggle('open');
         overlay.classList.toggle('active');
     } else {
-        // Escritorio: Colapsar ancho
         sidebar.classList.toggle('collapsed');
-
-        // Cambiar icono flecha/hamburguesa
         const icon = document.querySelector('.toggle-btn i');
         if (sidebar.classList.contains('collapsed')) {
-            icon.classList.remove('fa-bars');
-            icon.classList.add('fa-arrow-right');
+            icon.classList.remove('fa-bars'); icon.classList.add('fa-arrow-right');
         } else {
-            icon.classList.remove('fa-arrow-right');
-            icon.classList.add('fa-bars');
+            icon.classList.remove('fa-arrow-right'); icon.classList.add('fa-bars');
         }
     }
 }
-
-// Cerrar menú móvil al redimensionar ventana
 window.addEventListener('resize', () => {
     if (window.innerWidth > 1024) {
         document.getElementById('sidebar').classList.remove('open');
         document.getElementById('mobile-overlay').classList.remove('active');
     }
 });
-
-async function logout() {
-    await fetch('/api/logout', { method: 'POST' });
-    window.location.href = '/login.html';
-}
+async function logout() { await fetch('/api/logout', { method: 'POST' }); window.location.href = '/login.html'; }
 
 // ==========================================
-//  PARTE 1: CONTROL DE EQUIPOS
+//  PARTE 1: CONTROL DE EQUIPOS (SQL)
 // ==========================================
 async function fetchData() {
     try {
-        const response = await fetch('/api/data');
-        appData = await response.json();
+        const response = await fetch('/api/structure'); // Nuevo endpoint SQL
+        const data = await response.json();
+        appData = data;
         renderDashboard();
     } catch (error) { console.error("Error cargando equipos", error); }
 }
 
 function renderDashboard() {
     const container = document.getElementById("dashboard");
-    if (!container) return;
+    if (!container || !appData) return;
     container.innerHTML = "";
 
-    appData.areas.forEach((area, areaIdx) => {
+    appData.areas.forEach((area) => {
         const areaCol = document.createElement("div");
         areaCol.className = "area-column";
 
@@ -129,15 +92,16 @@ function renderDashboard() {
         areaTitle.innerText = area.name;
         areaCol.appendChild(areaTitle);
 
-        area.locations.forEach((loc, locIdx) => {
+        area.locations.forEach((loc) => {
             const locCard = document.createElement("div");
             locCard.className = "location-card";
+
             locCard.innerHTML = `
                 <div class="location-header-top">
                     <span class="location-name">${loc.name}</span>
                     <div class="sede-actions">
-                        <i class="fas fa-plus" onclick="openCompModal(${areaIdx}, ${locIdx}, null)" title="Agregar PC"></i>
-                        <i class="fas fa-cog" onclick="openSedeModal(${areaIdx}, ${locIdx})" title="Configurar Sede"></i>
+                        <i class="fas fa-plus" onclick="openCompModal(${loc.id}, null)" title="Agregar PC"></i>
+                        <i class="fas fa-cog" onclick="openSedeModal(${area.id}, ${loc.id}, '${loc.name}')" title="Configurar Sede"></i>
                     </div>
                 </div>
             `;
@@ -145,10 +109,14 @@ function renderDashboard() {
             const grid = document.createElement("div");
             grid.className = "computer-grid";
 
-            loc.computers.forEach((comp, compIdx) => {
+            loc.computers.forEach((comp) => {
                 const item = document.createElement("div");
                 item.className = "computer-item";
-                item.onclick = () => openCompModal(areaIdx, locIdx, compIdx);
+
+                // Pasamos el objeto comp completo para edición
+                // Importante: al pasarlo directo en onclick, JS maneja la referencia
+                item.onclick = () => openCompModal(loc.id, comp);
+
                 const iconClass = comp.type === 'server' ? 'fa-server' : 'fa-desktop';
                 const statusClass = comp.status ? 'status-true' : 'status-false';
                 item.innerHTML = `
@@ -162,133 +130,146 @@ function renderDashboard() {
             areaCol.appendChild(locCard);
         });
 
-        // Botón agregar sede
         const btnAddSede = document.createElement("button");
         btnAddSede.innerText = "+ Nueva Sede";
         btnAddSede.style.cssText = "background:transparent; border:2px dashed var(--border-color); color:var(--text-secondary); width:100%; padding:10px; cursor:pointer;";
-        btnAddSede.onclick = () => openSedeModal(areaIdx, null);
+        btnAddSede.onclick = () => openSedeModal(area.id, null, '');
         areaCol.appendChild(btnAddSede);
 
         container.appendChild(areaCol);
     });
 }
 
-// --- MODALES EQUIPOS Y SEDES ---
+// --- MODALES Y CRUD ---
 const modalComp = document.getElementById("modal-comp");
-const formComp = document.getElementById("computer-form");
 const modalSede = document.getElementById("modal-sede");
-const formSede = document.getElementById("sede-form");
 
-function openCompModal(areaIdx, locIdx, compIdx) {
-    if (!modalComp) return;
+let currentSedeIdForComp = null;
+let currentCompId = null;
+let currentAreaIdForSede = null;
+let currentSedeId = null;
+
+// -- LOGICA EQUIPOS --
+function openCompModal(sedeId, compObj) {
     modalComp.style.display = "block";
-    const deleteBtn = document.getElementById("btn-delete-comp");
-    const indicesInput = document.getElementById("comp-indices");
+    currentSedeIdForComp = sedeId;
 
-    if (compIdx !== null) {
-        const comp = appData.areas[areaIdx].locations[locIdx].computers[compIdx];
+    if (compObj) {
+        // Editar
+        currentCompId = compObj.id;
         document.getElementById("modal-comp-title").innerText = "Editar Equipo";
-        document.getElementById("comp-name").value = comp.name;
-        document.getElementById("comp-hostname").value = comp.hostname;
-        document.getElementById("comp-type").value = comp.type;
-        document.getElementById("comp-status").checked = comp.status;
-        indicesInput.value = `${areaIdx},${locIdx},${compIdx}`;
-        deleteBtn.style.display = "block";
-        deleteBtn.onclick = () => deleteComputer(areaIdx, locIdx, compIdx);
+        document.getElementById("comp-name").value = compObj.name;
+        document.getElementById("comp-hostname").value = compObj.hostname;
+        document.getElementById("comp-type").value = compObj.type;
+        document.getElementById("comp-status").checked = compObj.status;
+
+        document.getElementById("btn-delete-comp").style.display = "block";
+        document.getElementById("btn-delete-comp").onclick = () => deleteComputer(currentCompId);
     } else {
+        // Nuevo
+        currentCompId = null;
         document.getElementById("modal-comp-title").innerText = "Nuevo Equipo";
-        formComp.reset();
+        document.getElementById("computer-form").reset();
         document.getElementById("comp-type").value = "desktop";
         document.getElementById("comp-status").checked = true;
-        indicesInput.value = `${areaIdx},${locIdx},new`;
-        deleteBtn.style.display = "none";
+
+        document.getElementById("btn-delete-comp").style.display = "none";
     }
 }
 
-if (formComp) {
-    formComp.onsubmit = async (e) => {
+if (document.getElementById("computer-form")) {
+    document.getElementById("computer-form").onsubmit = async (e) => {
         e.preventDefault();
-        const [areaIdx, locIdx, compIdx] = document.getElementById("comp-indices").value.split(',');
-        const newComp = {
-            id: Date.now(),
+        const data = {
             name: document.getElementById("comp-name").value,
             hostname: document.getElementById("comp-hostname").value,
             type: document.getElementById("comp-type").value,
-            status: document.getElementById("comp-status").checked
+            status: document.getElementById("comp-status").checked,
+            sede_id: currentSedeIdForComp // Backend lo recibirá como sede_id y lo insertará en id_sede
         };
-        if (compIdx === 'new') {
-            appData.areas[areaIdx].locations[locIdx].computers.push(newComp);
-        } else {
-            newComp.id = appData.areas[areaIdx].locations[locIdx].computers[compIdx].id;
-            appData.areas[areaIdx].locations[locIdx].computers[compIdx] = newComp;
+
+        let url = '/api/equipos';
+        let method = 'POST';
+
+        if (currentCompId) {
+            url = `/api/equipos/${currentCompId}`;
+            method = 'PUT';
         }
-        await saveData();
+
+        await fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
         modalComp.style.display = "none";
+        fetchData();
     };
 }
 
-async function deleteComputer(areaIdx, locIdx, compIdx) {
+async function deleteComputer(id) {
     if (confirm("¿Eliminar equipo?")) {
-        appData.areas[areaIdx].locations[locIdx].computers.splice(compIdx, 1);
-        await saveData();
+        await fetch(`/api/equipos/${id}`, { method: 'DELETE' });
         modalComp.style.display = "none";
+        fetchData();
     }
 }
 
-function openSedeModal(areaIdx, locIdx) {
-    if (!modalSede) return;
+// -- LOGICA SEDES --
+function openSedeModal(areaId, sedeId, sedeName) {
     modalSede.style.display = "block";
-    const indicesInput = document.getElementById("sede-indices");
-    const nameInput = document.getElementById("sede-name");
-    const deleteBtn = document.getElementById("btn-delete-sede");
+    currentAreaIdForSede = areaId;
+    currentSedeId = sedeId;
 
-    if (locIdx !== null) {
-        const loc = appData.areas[areaIdx].locations[locIdx];
-        document.getElementById("modal-sede-title").innerText = "Editar Sede";
-        nameInput.value = loc.name;
-        indicesInput.value = `${areaIdx},${locIdx}`;
-        deleteBtn.style.display = "block";
-        deleteBtn.onclick = () => deleteSede(areaIdx, locIdx);
+    const title = document.getElementById("modal-sede-title");
+    const nameInput = document.getElementById("sede-name");
+    const delBtn = document.getElementById("btn-delete-sede");
+
+    if (sedeId) {
+        title.innerText = "Editar Sede";
+        nameInput.value = sedeName;
+        delBtn.style.display = "block";
+        delBtn.onclick = () => deleteSede(sedeId);
     } else {
-        document.getElementById("modal-sede-title").innerText = "Nueva Sede";
+        title.innerText = "Nueva Sede";
         nameInput.value = "";
-        indicesInput.value = `${areaIdx},new`;
-        deleteBtn.style.display = "none";
+        delBtn.style.display = "none";
     }
 }
 
-if (formSede) {
-    formSede.onsubmit = async (e) => {
+if (document.getElementById("sede-form")) {
+    document.getElementById("sede-form").onsubmit = async (e) => {
         e.preventDefault();
-        const indices = document.getElementById("sede-indices").value.split(',');
-        const areaIdx = indices[0];
-        const locIdx = indices[1];
         const name = document.getElementById("sede-name").value;
-        if (locIdx === 'new') {
-            appData.areas[areaIdx].locations.push({ name: name, computers: [] });
-        } else {
-            appData.areas[areaIdx].locations[locIdx].name = name;
+
+        let url = '/api/sedes';
+        let method = 'POST';
+        // Enviamos area_id, backend lo inserta en id_area
+        let body = { name: name, area_id: currentAreaIdForSede };
+
+        if (currentSedeId) {
+            url = `/api/sedes/${currentSedeId}`;
+            method = 'PUT';
+            body = { name: name };
         }
-        await saveData();
+
+        await fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+
         modalSede.style.display = "none";
+        fetchData();
     };
 }
 
-async function deleteSede(areaIdx, locIdx) {
-    if (confirm("¿Eliminar sede y sus equipos?")) {
-        appData.areas[areaIdx].locations.splice(locIdx, 1);
-        await saveData();
+async function deleteSede(id) {
+    if (confirm("¿Eliminar sede y todos sus equipos?")) {
+        await fetch(`/api/sedes/${id}`, { method: 'DELETE' });
         modalSede.style.display = "none";
+        fetchData();
     }
-}
-
-async function saveData() {
-    await fetch('/api/data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(appData)
-    });
-    renderDashboard();
 }
 
 function closeModal(id) { document.getElementById(id).style.display = "none"; }
@@ -368,22 +349,16 @@ function renderTablaPrecios(lista) {
     if (lista.length === 0) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">No se encontraron productos tipo 3.</td></tr>'; return; }
     lista.forEach(p => {
         const tr = document.createElement('tr');
-        //const p1 = p.PreTema1 || 0; const p2 = p.PreTema2 || 0; const p3 = p.PreTema3 || 0;
-        //const p4 = p.PreTema4 || 0; const p5 = p.PreTema5 || 0; const p6 = p.PreTema6 || 0;
-        const p1 = (p.PreTema1 || 0).toFixed(4);
-        const p2 = (p.PreTema2 || 0).toFixed(4);
-        const p3 = (p.PreTema3 || 0).toFixed(4);
-        const p4 = (p.PreTema4 || 0).toFixed(4);
-        const p5 = (p.PreTema5 || 0).toFixed(4);
-        const p6 = (p.PreTema6 || 0).toFixed(4);
+        const p1 = (p.PreTema1 || 0).toFixed(4); const p2 = (p.PreTema2 || 0).toFixed(4); const p3 = (p.PreTema3 || 0).toFixed(4);
+        const p4 = (p.PreTema4 || 0).toFixed(4); const p5 = (p.PreTema5 || 0).toFixed(4); const p6 = (p.PreTema6 || 0).toFixed(4);
         tr.innerHTML = `
             <td><span style="font-weight:bold; font-size:0.85rem; color:var(--text-secondary)">${p.CodPro}</span><br>${p.Nombre}</td>
-            <td><input type="number" step="0.01" class="price-input" id="p1-${p.CodPro}" value="${p1}"></td>
-            <td><input type="number" step="0.01" class="price-input" id="p2-${p.CodPro}" value="${p2}"></td>
-            <td><input type="number" step="0.01" class="price-input" id="p3-${p.CodPro}" value="${p3}"></td>
-            <td><input type="number" step="0.01" class="price-input" id="p4-${p.CodPro}" value="${p4}"></td>
-            <td><input type="number" step="0.01" class="price-input" id="p5-${p.CodPro}" value="${p5}"></td>
-            <td><input type="number" step="0.01" class="price-input" id="p6-${p.CodPro}" value="${p6}"></td>
+            <td><input type="number" step="0.0001" class="price-input" id="p1-${p.CodPro}" value="${p1}"></td>
+            <td><input type="number" step="0.0001" class="price-input" id="p2-${p.CodPro}" value="${p2}"></td>
+            <td><input type="number" step="0.0001" class="price-input" id="p3-${p.CodPro}" value="${p3}"></td>
+            <td><input type="number" step="0.0001" class="price-input" id="p4-${p.CodPro}" value="${p4}"></td>
+            <td><input type="number" step="0.0001" class="price-input" id="p5-${p.CodPro}" value="${p5}"></td>
+            <td><input type="number" step="0.0001" class="price-input" id="p6-${p.CodPro}" value="${p6}"></td>
             <td><button class="btn-update" onclick="guardarPrecio('${p.CodPro}')"><i class="fas fa-save"></i></button></td>
         `;
         tbody.appendChild(tr);
@@ -401,12 +376,9 @@ function filtrarTablaPrecios() {
     });
 }
 async function guardarPrecio(codPro) {
-    const p1 = document.getElementById(`p1-${codPro}`).value;
-    const p2 = document.getElementById(`p2-${codPro}`).value;
-    const p3 = document.getElementById(`p3-${codPro}`).value;
-    const p4 = document.getElementById(`p4-${codPro}`).value;
-    const p5 = document.getElementById(`p5-${codPro}`).value;
-    const p6 = document.getElementById(`p6-${codPro}`).value;
+    const p1 = document.getElementById(`p1-${codPro}`).value; const p2 = document.getElementById(`p2-${codPro}`).value;
+    const p3 = document.getElementById(`p3-${codPro}`).value; const p4 = document.getElementById(`p4-${codPro}`).value;
+    const p5 = document.getElementById(`p5-${codPro}`).value; const p6 = document.getElementById(`p6-${codPro}`).value;
     const btn = event.currentTarget; const icono = btn.querySelector('i');
     icono.className = "fas fa-spinner fa-spin";
     try {
