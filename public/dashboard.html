@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"> <!-- CRUCIAL -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Panel de Control - Sedimcorp</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -12,22 +12,17 @@
 <body>
 
     <div class="main-layout">
-
-        <!-- Overlay para móviles (Fondo oscuro al abrir menú) -->
         <div id="mobile-overlay" onclick="toggleSidebar()"></div>
 
         <!-- SIDEBAR MENU -->
         <nav class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <!-- Contenedor Marca y Botón Colapsar (Escritorio) -->
                 <div class="brand-container">
                     <div class="brand">Admin Panel</div>
                     <button class="toggle-btn" onclick="toggleSidebar()" title="Colapsar Menú">
                         <i class="fas fa-bars"></i>
                     </button>
                 </div>
-
-                <!-- Botón Tema -->
                 <button class="theme-toggle" onclick="toggleTheme()" title="Cambiar Tema">
                     <i class="fas fa-sun" id="theme-icon"></i>
                 </button>
@@ -35,7 +30,7 @@
 
             <!-- Lista de Navegación -->
             <ul>
-                <!-- Nota: Textos envueltos en SPAN para ocultarlos al colapsar -->
+                <!-- Nota: IDs deben coincidir con la lógica del JS (0,1,2,3) -->
                 <li onclick="showView('equipos')" class="active">
                     <i class="fas fa-desktop"></i> <span>Control de Equipos</span>
                 </li>
@@ -57,10 +52,8 @@
             </div>
         </nav>
 
-        <!-- AREA DE CONTENIDO PRINCIPAL -->
+        <!-- AREA DE CONTENIDO -->
         <div class="content">
-
-            <!-- Botón Hamburguesa (Solo visible en Móviles) -->
             <button class="mobile-menu-btn" onclick="toggleSidebar()">
                 <i class="fas fa-bars"></i>
             </button>
@@ -88,6 +81,7 @@
                                 <th>ID</th>
                                 <th>Usuario</th>
                                 <th>Nombre Completo</th>
+                                <th>Rol</th> <!-- NUEVA COLUMNA -->
                                 <th>Acciones</th>
                             </tr>
                         </thead>
@@ -96,7 +90,7 @@
                 </div>
             </div>
 
-            <!-- VISTA 3: CAMBIO DE PRECIOS -->
+            <!-- VISTA 3: PRECIOS -->
             <div id="view-precios" class="view-section" style="display:none;">
                 <header>
                     <h1>Gestión de Precios - Ventas 10%</h1>
@@ -130,7 +124,7 @@
                 </div>
             </div>
 
-            <!-- VISTA 4: REVISIÓN DATOS NUBE -->
+            <!-- VISTA 4: REVISIÓN DATOS -->
             <div id="view-revision" class="view-section" style="display:none;">
                 <header>
                     <h1>Revisión Datos en la Nube</h1>
@@ -154,7 +148,6 @@
                     <div class="empty-state-message"><i class="fas fa-arrow-up"></i> Selecciona filtros y consulta</div>
                 </div>
             </div>
-
         </div>
     </div>
 
@@ -202,6 +195,13 @@
                 <label>Usuario (Login)</label><input type="text" id="u-user" required>
                 <label>Contraseña</label><input type="password" id="u-pass" required>
                 <label>Nombre Completo</label><input type="text" id="u-name" required>
+
+                <!-- NUEVO SELECTOR ROL -->
+                <label>Rol</label>
+                <select id="u-rol" required>
+                    <!-- Se llena con JS -->
+                </select>
+
                 <div class="modal-actions"><button type="submit" class="btn-save">Crear Usuario</button></div>
             </form>
         </div>
