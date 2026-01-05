@@ -84,25 +84,15 @@ document.addEventListener("DOMContentLoaded", async () => {
 // ==========================================
 
 function aplicarPermisos(permisos) {
-    // Mapeo: clave_modulo -> índice visual en el menú
-    // 0: Equipos, 1: Usuarios, 2: Precios, 3: Revisión, 4: Reportes
-    const map = {
-        'equipos': 0,
-        'usuarios': 1,
-        'precios': 2,
-        'revision': 3,
-        'reportes': 4
-    };
-
-    const menuItems = document.querySelectorAll('.sidebar > ul > li');
-
-    // 1. Ocultar todo
+    // 1. Ocultar todos los items del menú que tengan data-module
+    const menuItems = document.querySelectorAll('.sidebar li[data-module]');
     menuItems.forEach(item => item.style.display = 'none');
 
-    // 2. Mostrar permitidos
-    permisos.forEach(p => {
-        if (map[p] !== undefined && menuItems[map[p]]) {
-            menuItems[map[p]].style.display = 'block';
+    // 2. Mostrar solo los permitidos
+    menuItems.forEach(item => {
+        const modulo = item.getAttribute('data-module');
+        if (permisos.includes(modulo)) {
+            item.style.display = 'block'; // O 'flex' según estilo
         }
     });
 }

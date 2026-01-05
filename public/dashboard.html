@@ -29,28 +29,28 @@
             </div>
 
             <ul>
-                <li onclick="showView('equipos')" class="active">
+                <!-- AGREGADOS data-module para control de permisos robusto -->
+                <li onclick="showView('equipos')" class="active" data-module="equipos">
                     <i class="fas fa-desktop"></i> <span>Control de Equipos</span>
                 </li>
-                <li onclick="showView('usuarios')">
+                <li onclick="showView('usuarios')" data-module="usuarios">
                     <i class="fas fa-users"></i> <span>Usuarios Sistema</span>
                 </li>
-                <li onclick="showView('precios')">
+                <li onclick="showView('precios')" data-module="precios">
                     <i class="fas fa-tags"></i> <span>Cambio de Precios</span>
                 </li>
-                <li onclick="showView('revision')">
+                <li onclick="showView('revision')" data-module="revision">
                     <i class="fas fa-cloud"></i> <span>Revisión Datos Nube</span>
                 </li>
 
-                <!-- SUBMENU REPORTES (Colapsado por defecto) -->
-                <li class="has-submenu">
+                <li class="has-submenu" data-module="reportes">
                     <div class="submenu-toggle" onclick="toggleSubmenu(this)">
                         <div style="display:flex; align-items:center;">
                             <i class="fas fa-chart-line"></i> <span>Reportes</span>
                         </div>
                         <i class="fas fa-chevron-down arrow-icon"></i>
                     </div>
-                    <ul class="submenu"> <!-- Sin clase 'open' para iniciar cerrado -->
+                    <ul class="submenu">
                         <li onclick="showView('reportes-salida')">
                             <i class="fas fa-file-export"></i> <span>Salida Insumos</span>
                         </li>
@@ -70,7 +70,7 @@
                 <i class="fas fa-bars"></i>
             </button>
 
-            <!-- VISTAS -->
+            <!-- VISTAS DEL SISTEMA -->
             <div id="view-equipos" class="view-section">
                 <header>
                     <h1>Control de Equipos</h1>
@@ -136,7 +136,6 @@
                 <header>
                     <h1>Revisión Datos en la Nube</h1>
                 </header>
-                <!-- Filtros Alineados al Fondo -->
                 <div class="filters-container revision-filters">
                     <div class="filter-group"><label>Empresa</label><select id="rev-empresa">
                             <option value="02">Cocineria</option>
@@ -157,34 +156,22 @@
                 </div>
             </div>
 
-            <!-- VISTA REPORTE: SALIDA INSUMOS (REDISEÑADA) -->
             <div id="view-reportes-salida" class="view-section" style="display:none;">
                 <header>
                     <h1>Reporte: Salida de Insumos</h1>
                 </header>
-
-                <!-- Barra Superior Compacta y Organizada -->
                 <div class="report-top-bar">
-                    <!-- Grupo Izquierdo: Filtros -->
                     <div class="report-filters-group">
-                        <div class="filter-mini">
-                            <label>Empresa</label>
-                            <select id="rep-empresa" onchange="cargarReporte(1)">
+                        <div class="filter-mini"><label>Empresa</label><select id="rep-empresa"
+                                onchange="cargarReporte(1)">
                                 <option value="02">Cocineria</option>
                                 <option value="04">Mar Picante</option>
                                 <option value="06">Abruzzo</option>
-                            </select>
-                        </div>
-                        <div class="filter-mini" style="width: 100px;">
-                            <label>Año</label>
-                            <select id="rep-anio" onchange="cargarReporte(1)">
-                                <!-- JS llena años -->
-                            </select>
-                        </div>
-                        <!-- NUEVO FILTRO MES -->
-                        <div class="filter-mini" style="width: 140px;">
-                            <label>Mes</label>
-                            <select id="rep-mes" onchange="cargarReporte(1)">
+                            </select></div>
+                        <div class="filter-mini" style="width: 100px;"><label>Año</label><select id="rep-anio"
+                                onchange="cargarReporte(1)"></select></div>
+                        <div class="filter-mini" style="width: 140px;"><label>Mes</label><select id="rep-mes"
+                                onchange="cargarReporte(1)">
                                 <option value="0">Todos</option>
                                 <option value="1">Enero</option>
                                 <option value="2">Febrero</option>
@@ -198,38 +185,25 @@
                                 <option value="10">Octubre</option>
                                 <option value="11">Noviembre</option>
                                 <option value="12">Diciembre</option>
-                            </select>
-                        </div>
-
+                            </select></div>
                         <button class="btn-delete btn-sm" onclick="limpiarFiltrosReporte()" title="Limpiar"><i
                                 class="fas fa-eraser"></i></button>
                     </div>
-
-                    <!-- Grupo Derecho: Acciones -->
-                    <div class="report-actions-group">
-                        <button class="btn-save" onclick="exportarExcel()"><i class="fas fa-file-excel"></i>
-                            Exportar</button>
-                    </div>
+                    <div class="report-actions-group"><button class="btn-save" onclick="exportarExcel()"><i
+                                class="fas fa-file-excel"></i> Exportar</button></div>
                 </div>
-
-                <!-- Tarjetas Totales -->
                 <div class="revision-grid"
                     style="margin-bottom: 20px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
-                    <div class="status-card compact-card">
-                        <span class="card-label">REGISTROS</span>
+                    <div class="status-card compact-card"><span class="card-label">REGISTROS</span>
                         <h2 id="sum-registros">0</h2>
                     </div>
-                    <div class="status-card compact-card">
-                        <span class="card-label">CANTIDAD TOTAL</span>
+                    <div class="status-card compact-card"><span class="card-label">CANTIDAD TOTAL</span>
                         <h2 id="sum-cantidad" style="color:var(--accent)">0</h2>
                     </div>
-                    <div class="status-card compact-card">
-                        <span class="card-label">COSTO TOTAL</span>
+                    <div class="status-card compact-card"><span class="card-label">COSTO TOTAL</span>
                         <h2 id="sum-costo" style="color:var(--green-status)">0.00</h2>
                     </div>
                 </div>
-
-                <!-- Tabla Reporte -->
                 <div class="table-container report-table-container">
                     <table id="report-table">
                         <thead>
@@ -253,12 +227,9 @@
                         <tbody></tbody>
                     </table>
                 </div>
-
-                <div class="pagination-controls">
-                    <button onclick="cambiarPagina(-1)"><i class="fas fa-chevron-left"></i></button>
-                    <span id="page-info">Pág 1</span>
-                    <button onclick="cambiarPagina(1)"><i class="fas fa-chevron-right"></i></button>
-                </div>
+                <div class="pagination-controls"><button onclick="cambiarPagina(-1)"><i
+                            class="fas fa-chevron-left"></i></button><span id="page-info">Pág 1</span><button
+                        onclick="cambiarPagina(1)"><i class="fas fa-chevron-right"></i></button></div>
             </div>
         </div>
     </div>
