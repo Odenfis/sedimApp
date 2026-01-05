@@ -135,6 +135,11 @@ button {
     filter: brightness(90%);
 }
 
+.btn-sm {
+    padding: 8px 12px;
+    font-size: 0.9rem;
+}
+
 /* --- BOTÓN TEMA (SOL/LUNA) --- */
 .theme-toggle {
     background: transparent;
@@ -213,11 +218,13 @@ button {
     margin-top: 10px;
 }
 
+/* --- CORRECCIÓN POSICIÓN LUNA LOGIN --- */
 .login-theme-btn {
-    position: absolute;
+    position: fixed;
+    /* Fixed para que sea relativo a la ventana, no al body */
     top: 25px;
     right: 25px;
-    z-index: 10;
+    z-index: 1000;
 }
 
 /* Wrapper contraseña con ojo */
@@ -282,7 +289,6 @@ button {
 .brand-container {
     display: flex;
     justify-content: flex-start;
-    /* Alineado a la izquierda */
     gap: 15px;
     width: 100%;
     align-items: center;
@@ -343,6 +349,51 @@ button {
     margin-right: 12px;
 }
 
+/* --- ESTILOS DE SUBMENÚ (Alineación corregida) --- */
+.has-submenu {
+    /* Quitamos el padding del LI padre para que no sume doble padding */
+    padding: 0 !important;
+    display: block !important;
+}
+
+.submenu-toggle {
+    /* El padding se aplica aquí para igualar a los otros LI */
+    padding: 12px 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    width: 100%;
+    box-sizing: border-box;
+    /* Asegura que el padding no rompa el ancho */
+    color: var(--sidebar-text);
+}
+
+.submenu-toggle:hover {
+    background: var(--sidebar-active);
+    border-radius: 8px;
+}
+
+.submenu {
+    display: none;
+    list-style: none;
+    padding-left: 20px;
+    background: rgba(0, 0, 0, 0.03);
+    border-radius: 8px;
+    margin-top: 2px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.submenu li {
+    padding: 10px 15px;
+    font-size: 0.9rem;
+}
+
+.submenu.open {
+    display: block;
+}
+
 /* Footer Sidebar */
 .sidebar-footer {
     border-top: 1px solid var(--border-color);
@@ -359,9 +410,15 @@ button {
 }
 
 .sidebar.collapsed .brand,
-.sidebar.collapsed li span {
+.sidebar.collapsed li span,
+.sidebar.collapsed .arrow-icon {
     display: none;
     opacity: 0;
+}
+
+/* Ocultamos submenu en colapsado para evitar bugs visuales */
+.sidebar.collapsed .submenu {
+    display: none !important;
 }
 
 .sidebar.collapsed .brand-container {
@@ -609,7 +666,7 @@ button {
 }
 
 .revision-filters {
-    align-items: flex-start;
+    align-items: flex-end;
 }
 
 .filter-group {
@@ -722,6 +779,59 @@ button {
     padding: 40px;
 }
 
+/* --- NUEVOS ESTILOS REPORTES --- */
+.report-top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    background: var(--card-bg);
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.report-filters-group {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+
+.filter-mini {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 120px;
+}
+
+.filter-mini label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+}
+
+.filter-mini select {
+    padding: 6px 10px;
+    font-size: 0.9rem;
+}
+
+.compact-card {
+    min-height: auto;
+    padding: 15px;
+}
+
+.card-label {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+    display: block;
+    margin-bottom: 5px;
+}
+
 
 /* --- TABLAS Y PRECIOS --- */
 .table-container {
@@ -759,6 +869,16 @@ tr:hover {
     background-color: var(--table-row-hover);
 }
 
+.col-filter {
+    margin-top: 4px;
+    padding: 4px;
+    font-size: 0.75rem;
+    width: 100%;
+    height: 26px;
+    border: 1px solid var(--input-border);
+    border-radius: 4px;
+}
+
 /* --- INPUTS DE PRECIO CON 4 DECIMALES --- */
 .price-input {
     width: 110px;
@@ -780,6 +900,20 @@ tr:hover {
     align-items: center;
     justify-content: center;
     border-radius: 4px;
+}
+
+.pagination-controls {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 15px;
+    margin-top: 15px;
+}
+
+.pagination-controls button {
+    padding: 5px 10px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
 }
 
 
@@ -980,5 +1114,25 @@ form label {
     .login-container {
         width: 95%;
         padding: 1.5rem;
+    }
+
+    .report-top-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .report-filters-group {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .report-actions-group {
+        width: 100%;
+        text-align: right;
+        margin-top: 10px;
+    }
+
+    .filter-mini {
+        width: 100% !important;
     }
 }

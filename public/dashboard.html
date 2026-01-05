@@ -28,9 +28,7 @@
                 </button>
             </div>
 
-            <!-- Lista de Navegación -->
             <ul>
-                <!-- Nota: IDs deben coincidir con la lógica del JS (0,1,2,3) -->
                 <li onclick="showView('equipos')" class="active">
                     <i class="fas fa-desktop"></i> <span>Control de Equipos</span>
                 </li>
@@ -43,6 +41,21 @@
                 <li onclick="showView('revision')">
                     <i class="fas fa-cloud"></i> <span>Revisión Datos Nube</span>
                 </li>
+
+                <!-- SUBMENU REPORTES (Colapsado por defecto) -->
+                <li class="has-submenu">
+                    <div class="submenu-toggle" onclick="toggleSubmenu(this)">
+                        <div style="display:flex; align-items:center;">
+                            <i class="fas fa-chart-line"></i> <span>Reportes</span>
+                        </div>
+                        <i class="fas fa-chevron-down arrow-icon"></i>
+                    </div>
+                    <ul class="submenu"> <!-- Sin clase 'open' para iniciar cerrado -->
+                        <li onclick="showView('reportes-salida')">
+                            <i class="fas fa-file-export"></i> <span>Salida Insumos</span>
+                        </li>
+                    </ul>
+                </li>
             </ul>
 
             <div class="sidebar-footer">
@@ -52,13 +65,12 @@
             </div>
         </nav>
 
-        <!-- AREA DE CONTENIDO -->
         <div class="content">
             <button class="mobile-menu-btn" onclick="toggleSidebar()">
                 <i class="fas fa-bars"></i>
             </button>
 
-            <!-- VISTA 1: CONTROL DE EQUIPOS -->
+            <!-- VISTAS -->
             <div id="view-equipos" class="view-section">
                 <header>
                     <h1>Control de Equipos</h1>
@@ -66,14 +78,11 @@
                 <div id="dashboard" class="dashboard-container"></div>
             </div>
 
-            <!-- VISTA 2: GESTIÓN DE USUARIOS -->
             <div id="view-usuarios" class="view-section" style="display:none;">
                 <header>
                     <h1>Usuarios del Sistema</h1>
                 </header>
-                <button class="btn-save" onclick="openUserModal()">
-                    <i class="fas fa-plus"></i> Nuevo Usuario
-                </button>
+                <button class="btn-save" onclick="openUserModal()"><i class="fas fa-plus"></i> Nuevo Usuario</button>
                 <div class="table-container">
                     <table id="users-table">
                         <thead>
@@ -81,7 +90,7 @@
                                 <th>ID</th>
                                 <th>Usuario</th>
                                 <th>Nombre Completo</th>
-                                <th>Rol</th> <!-- NUEVA COLUMNA -->
+                                <th>Rol</th>
                                 <th>Acciones</th>
                             </tr>
                         </thead>
@@ -90,7 +99,6 @@
                 </div>
             </div>
 
-            <!-- VISTA 3: PRECIOS -->
             <div id="view-precios" class="view-section" style="display:none;">
                 <header>
                     <h1>Gestión de Precios - Ventas 10%</h1>
@@ -124,11 +132,11 @@
                 </div>
             </div>
 
-            <!-- VISTA 4: REVISIÓN DATOS -->
             <div id="view-revision" class="view-section" style="display:none;">
                 <header>
                     <h1>Revisión Datos en la Nube</h1>
                 </header>
+                <!-- Filtros Alineados al Fondo -->
                 <div class="filters-container revision-filters">
                     <div class="filter-group"><label>Empresa</label><select id="rev-empresa">
                             <option value="02">Cocineria</option>
@@ -141,67 +149,153 @@
                         </select></div>
                     <div class="filter-group"><label>Inicio</label><input type="date" id="rev-inicio"></div>
                     <div class="filter-group"><label>Fin</label><input type="date" id="rev-fin"></div>
-                    <button class="btn-save" onclick="consultarRevision()"
-                        style="height: 42px; align-self: flex-end;"><i class="fas fa-search"></i> Consultar</button>
+                    <button class="btn-save" onclick="consultarRevision()" style="height: 42px; min-width: 120px;"><i
+                            class="fas fa-search"></i> Consultar</button>
                 </div>
                 <div id="revision-grid" class="revision-grid">
                     <div class="empty-state-message"><i class="fas fa-arrow-up"></i> Selecciona filtros y consulta</div>
                 </div>
             </div>
+
+            <!-- VISTA REPORTE: SALIDA INSUMOS (REDISEÑADA) -->
+            <div id="view-reportes-salida" class="view-section" style="display:none;">
+                <header>
+                    <h1>Reporte: Salida de Insumos</h1>
+                </header>
+
+                <!-- Barra Superior Compacta y Organizada -->
+                <div class="report-top-bar">
+                    <!-- Grupo Izquierdo: Filtros -->
+                    <div class="report-filters-group">
+                        <div class="filter-mini">
+                            <label>Empresa</label>
+                            <select id="rep-empresa" onchange="cargarReporte(1)">
+                                <option value="02">Cocineria</option>
+                                <option value="04">Mar Picante</option>
+                                <option value="06">Abruzzo</option>
+                            </select>
+                        </div>
+                        <div class="filter-mini" style="width: 100px;">
+                            <label>Año</label>
+                            <select id="rep-anio" onchange="cargarReporte(1)">
+                                <!-- JS llena años -->
+                            </select>
+                        </div>
+                        <!-- NUEVO FILTRO MES -->
+                        <div class="filter-mini" style="width: 140px;">
+                            <label>Mes</label>
+                            <select id="rep-mes" onchange="cargarReporte(1)">
+                                <option value="0">Todos</option>
+                                <option value="1">Enero</option>
+                                <option value="2">Febrero</option>
+                                <option value="3">Marzo</option>
+                                <option value="4">Abril</option>
+                                <option value="5">Mayo</option>
+                                <option value="6">Junio</option>
+                                <option value="7">Julio</option>
+                                <option value="8">Agosto</option>
+                                <option value="9">Septiembre</option>
+                                <option value="10">Octubre</option>
+                                <option value="11">Noviembre</option>
+                                <option value="12">Diciembre</option>
+                            </select>
+                        </div>
+
+                        <button class="btn-delete btn-sm" onclick="limpiarFiltrosReporte()" title="Limpiar"><i
+                                class="fas fa-eraser"></i></button>
+                    </div>
+
+                    <!-- Grupo Derecho: Acciones -->
+                    <div class="report-actions-group">
+                        <button class="btn-save" onclick="exportarExcel()"><i class="fas fa-file-excel"></i>
+                            Exportar</button>
+                    </div>
+                </div>
+
+                <!-- Tarjetas Totales -->
+                <div class="revision-grid"
+                    style="margin-bottom: 20px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                    <div class="status-card compact-card">
+                        <span class="card-label">REGISTROS</span>
+                        <h2 id="sum-registros">0</h2>
+                    </div>
+                    <div class="status-card compact-card">
+                        <span class="card-label">CANTIDAD TOTAL</span>
+                        <h2 id="sum-cantidad" style="color:var(--accent)">0</h2>
+                    </div>
+                    <div class="status-card compact-card">
+                        <span class="card-label">COSTO TOTAL</span>
+                        <h2 id="sum-costo" style="color:var(--green-status)">0.00</h2>
+                    </div>
+                </div>
+
+                <!-- Tabla Reporte -->
+                <div class="table-container report-table-container">
+                    <table id="report-table">
+                        <thead>
+                            <tr>
+                                <th>Linea<br><input type="text" class="col-filter" data-col="linea"
+                                        placeholder="Filtro..."></th>
+                                <th>Doc.<br><input type="text" class="col-filter" data-col="documento"
+                                        placeholder="Filtro..."></th>
+                                <th>Fecha</th>
+                                <th>Almacen</th>
+                                <th>CodPro<br><input type="text" class="col-filter" data-col="codpro"
+                                        placeholder="Filtro..."></th>
+                                <th>Nombre<br><input type="text" class="col-filter" data-col="nombre"
+                                        placeholder="Filtro..."></th>
+                                <th>Razón<br><input type="text" class="col-filter" data-col="razon"
+                                        placeholder="Filtro..."></th>
+                                <th>Cant.</th>
+                                <th>Costo</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+
+                <div class="pagination-controls">
+                    <button onclick="cambiarPagina(-1)"><i class="fas fa-chevron-left"></i></button>
+                    <span id="page-info">Pág 1</span>
+                    <button onclick="cambiarPagina(1)"><i class="fas fa-chevron-right"></i></button>
+                </div>
+            </div>
         </div>
     </div>
 
-    <!-- MODAL EQUIPOS -->
+    <!-- Modales -->
     <div id="modal-comp" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="closeModal('modal-comp')">&times;</span>
-            <h2 id="modal-comp-title">Editar Equipo</h2>
-            <form id="computer-form">
-                <input type="hidden" id="comp-indices">
-                <label>Nombre</label><input type="text" id="comp-name" required>
-                <label>Hostname</label><input type="text" id="comp-hostname" required>
-                <label>Tipo</label><select id="comp-type">
+        <div class="modal-content"> <span class="close" onclick="closeModal('modal-comp')">&times;</span>
+            <h2>Equipo</h2>
+            <form id="computer-form"><input type="hidden" id="comp-indices"> <label>Nombre</label><input type="text"
+                    id="comp-name" required><label>Hostname</label><input type="text" id="comp-hostname"
+                    required><label>Tipo</label><select id="comp-type">
                     <option value="desktop">PC Escritorio</option>
                     <option value="server">Servidor</option>
-                </select>
-                <label class="checkbox-container"><input type="checkbox" id="comp-status"><span
+                </select><label class="checkbox-container"><input type="checkbox" id="comp-status"><span
                         class="checkmark"></span> Estado Actualizado</label>
                 <div class="modal-actions"><button type="submit" class="btn-save">Guardar</button><button type="button"
                         id="btn-delete-comp" class="btn-delete">Eliminar</button></div>
             </form>
         </div>
     </div>
-
-    <!-- MODAL SEDE -->
     <div id="modal-sede" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="closeModal('modal-sede')">&times;</span>
-            <h2 id="modal-sede-title">Gestión de Sede</h2>
-            <form id="sede-form">
-                <input type="hidden" id="sede-indices">
-                <label>Nombre Sede</label><input type="text" id="sede-name" required>
+        <div class="modal-content"> <span class="close" onclick="closeModal('modal-sede')">&times;</span>
+            <h2>Gestión de Sede</h2>
+            <form id="sede-form"><input type="hidden" id="sede-indices"><label>Nombre Sede</label><input type="text"
+                    id="sede-name" required>
                 <div class="modal-actions"><button type="submit" class="btn-save">Guardar</button><button type="button"
                         id="btn-delete-sede" class="btn-delete">Eliminar</button></div>
             </form>
         </div>
     </div>
-
-    <!-- MODAL USUARIO -->
     <div id="modal-user" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="closeModal('modal-user')">&times;</span>
+        <div class="modal-content"> <span class="close" onclick="closeModal('modal-user')">&times;</span>
             <h2>Nuevo Usuario</h2>
-            <form id="user-form">
-                <label>Usuario (Login)</label><input type="text" id="u-user" required>
-                <label>Contraseña</label><input type="password" id="u-pass" required>
-                <label>Nombre Completo</label><input type="text" id="u-name" required>
-
-                <!-- NUEVO SELECTOR ROL -->
-                <label>Rol</label>
-                <select id="u-rol" required>
-                    <!-- Se llena con JS -->
-                </select>
-
+            <form id="user-form"><label>Usuario (Login)</label><input type="text" id="u-user"
+                    required><label>Contraseña</label><input type="password" id="u-pass" required><label>Nombre
+                    Completo</label><input type="text" id="u-name" required><label>Rol</label><select id="u-rol"
+                    required></select>
                 <div class="modal-actions"><button type="submit" class="btn-save">Crear Usuario</button></div>
             </form>
         </div>

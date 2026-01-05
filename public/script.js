@@ -1,77 +1,141 @@
-let appData = null;
+// ==========================================
+//  VARIABLES GLOBALES
+// ==========================================
+let appData = null; // Estructura de equipos
+
+// Variables para Reportes
+let reportPage = 1;
+let reportFilters = {};
+let reportDebounceTimer;
+
+// Variables para Modales de Equipos/Sedes
+let currentSedeIdForComp = null;
+let currentCompId = null;
+let currentAreaIdForSede = null;
+let currentSedeId = null;
 
 // ==========================================
-//  INICIO: VALIDACIÓN DE SESIÓN Y ROLES
+//  INICIO: VALIDACIÓN DE SESIÓN Y TEMA
 // ==========================================
 document.addEventListener("DOMContentLoaded", async () => {
-    // Tema
+    // 1. Aplicar tema guardado
     const savedTheme = localStorage.getItem('theme') || 'light';
     document.documentElement.setAttribute('data-theme', savedTheme);
     updateIcon(savedTheme);
 
-    // Fechas
+    // 2. Inicializar inputs de fecha con el día de hoy
     const today = new Date().toISOString().split('T')[0];
     const inputsDate = document.querySelectorAll('input[type="date"]');
     inputsDate.forEach(input => input.value = today);
 
+    // 3. Llenar select de años en reportes (Últimos 5 años)
+    const yearSelect = document.getElementById('rep-anio');
+    if (yearSelect) {
+        const currentYear = new Date().getFullYear();
+        for (let i = 0; i < 5; i++) {
+            const opt = document.createElement('option');
+            opt.value = currentYear - i;
+            opt.innerText = currentYear - i;
+            yearSelect.appendChild(opt);
+        }
+    }
+
+    // 4. Verificar Sesión y Permisos
     try {
         const res = await fetch('/api/session');
         if (!res.ok) {
             window.location.href = '/login.html';
         } else {
-            const sessionData = await res.json();
-            const user = sessionData.user;
+            const data = await res.json();
+            const user = data.user;
 
-            // 1. Filtrar Menú según Permisos
+            // Filtrar Menú Lateral según permisos
             aplicarPermisos(user.permisos);
 
-            // 2. Cargar datos iniciales según permisos
+            // Cargar datos iniciales según permisos
             if (user.permisos.includes('equipos')) fetchData();
             if (user.permisos.includes('usuarios')) {
                 loadUsers();
                 loadRolesSelect();
             }
-
-            // 3. Redirección inteligente si no tiene acceso a 'equipos' (vista por defecto)
-            if (!user.permisos.includes('equipos') && user.permisos.length > 0) {
-                showView(user.permisos[0]); // Mostrar la primera vista que sí tenga permitida
+            if (user.permisos.includes('reportes')) {
+                // Cargar reporte inicial (Opcional, o esperar click)
+                cargarReporte(1);
             }
         }
-    } catch (e) { window.location.href = '/login.html'; }
+    } catch (e) {
+        console.error(e);
+        window.location.href = '/login.html';
+    }
+
+    // 5. Filtros de reporte (Búsqueda en tiempo real con debounce)
+    const colFilters = document.querySelectorAll('.col-filter');
+    colFilters.forEach(input => {
+        input.addEventListener('keyup', (e) => {
+            clearTimeout(reportDebounceTimer);
+            reportFilters[e.target.dataset.col] = e.target.value;
+            reportDebounceTimer = setTimeout(() => cargarReporte(1), 500);
+        });
+    });
 });
 
-// --- GESTIÓN DE PERMISOS EN UI ---
-function aplicarPermisos(permisos) {
-    const menuItems = document.querySelectorAll('.sidebar ul li');
-    // Mapeo: clave_modulo -> índice en el menú (0:equipos, 1:usuarios, 2:precios, 3:revision)
-    const map = { 'equipos': 0, 'usuarios': 1, 'precios': 2, 'revision': 3 };
+// ==========================================
+//  GESTIÓN DE PERMISOS Y NAVEGACIÓN
+// ==========================================
 
-    // Primero ocultar todo
+function aplicarPermisos(permisos) {
+    // Mapeo: clave_modulo -> índice visual en el menú
+    // 0: Equipos, 1: Usuarios, 2: Precios, 3: Revisión, 4: Reportes
+    const map = {
+        'equipos': 0,
+        'usuarios': 1,
+        'precios': 2,
+        'revision': 3,
+        'reportes': 4
+    };
+
+    const menuItems = document.querySelectorAll('.sidebar > ul > li');
+
+    // 1. Ocultar todo
     menuItems.forEach(item => item.style.display = 'none');
 
-    // Mostrar solo lo permitido
+    // 2. Mostrar permitidos
     permisos.forEach(p => {
         if (map[p] !== undefined && menuItems[map[p]]) {
-            menuItems[map[p]].style.display = 'flex';
+            menuItems[map[p]].style.display = 'block';
         }
     });
 }
 
-// ==========================================
-//  NAVEGACIÓN
-// ==========================================
 function showView(viewName) {
-    const views = ['view-equipos', 'view-usuarios', 'view-precios', 'view-revision'];
-    views.forEach(v => { const el = document.getElementById(v); if (el) el.style.display = 'none'; });
-    document.querySelectorAll('.sidebar li').forEach(li => li.classList.remove('active'));
+    // Ocultar todas las vistas
+    const views = ['view-equipos', 'view-usuarios', 'view-precios', 'view-revision', 'view-reportes-salida'];
+    views.forEach(v => {
+        const el = document.getElementById(v);
+        if (el) el.style.display = 'none';
+    });
 
-    const menuIndex = { 'equipos': 0, 'usuarios': 1, 'precios': 2, 'revision': 3 };
-    const targetView = document.getElementById(`view-${viewName}`);
+    // Resetear 'active' del menú principal
+    document.querySelectorAll('.sidebar > ul > li').forEach(li => li.classList.remove('active'));
 
-    if (targetView) {
-        targetView.style.display = 'block';
-        const items = document.querySelectorAll('.sidebar ul li');
-        if (items[menuIndex[viewName]]) items[menuIndex[viewName]].classList.add('active');
+    // Activar vista target
+    const target = document.getElementById(`view-${viewName}`);
+    if (target) target.style.display = 'block';
+
+    // NOTA: La clase 'active' visual se puede manejar manualmente si se desea, 
+    // pero con submenús es mejor dejar que el usuario vea dónde hizo click.
+}
+
+function toggleSubmenu(element) {
+    const submenu = element.nextElementSibling; // El UL siguiente
+    const arrow = element.querySelector('.arrow-icon');
+
+    submenu.classList.toggle('open');
+
+    // Rotar flecha
+    if (arrow) {
+        arrow.style.transform = submenu.classList.contains('open') ? 'rotate(180deg)' : 'rotate(0deg)';
+        arrow.style.transition = 'transform 0.3s';
     }
 }
 
@@ -79,6 +143,7 @@ function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('mobile-overlay');
     const isMobile = window.innerWidth <= 1024;
+
     if (isMobile) {
         sidebar.classList.toggle('open');
         overlay.classList.toggle('active');
@@ -86,27 +151,39 @@ function toggleSidebar() {
         sidebar.classList.toggle('collapsed');
         const icon = document.querySelector('.toggle-btn i');
         if (sidebar.classList.contains('collapsed')) {
-            icon.classList.remove('fa-bars'); icon.classList.add('fa-arrow-right');
+            icon.classList.remove('fa-bars');
+            icon.classList.add('fa-arrow-right');
         } else {
-            icon.classList.remove('fa-arrow-right'); icon.classList.add('fa-bars');
+            icon.classList.remove('fa-arrow-right');
+            icon.classList.add('fa-bars');
         }
     }
 }
+
+// Cerrar sidebar móvil al redimensionar a escritorio
 window.addEventListener('resize', () => {
     if (window.innerWidth > 1024) {
         document.getElementById('sidebar').classList.remove('open');
         document.getElementById('mobile-overlay').classList.remove('active');
     }
 });
-async function logout() { await fetch('/api/logout', { method: 'POST' }); window.location.href = '/login.html'; }
+
+async function logout() {
+    await fetch('/api/logout', { method: 'POST' });
+    window.location.href = '/login.html';
+}
+
+function closeModal(id) {
+    document.getElementById(id).style.display = "none";
+}
 
 // ==========================================
-//  PARTE 1: CONTROL DE EQUIPOS
+//  PARTE 1: CONTROL DE EQUIPOS (CRUD SQL)
 // ==========================================
 async function fetchData() {
     try {
         const response = await fetch('/api/structure');
-        if (!response.ok) return; // Si no tiene permiso
+        if (!response.ok) return;
         const data = await response.json();
         appData = data;
         renderDashboard();
@@ -121,6 +198,7 @@ function renderDashboard() {
     appData.areas.forEach((area) => {
         const areaCol = document.createElement("div");
         areaCol.className = "area-column";
+
         const areaTitle = document.createElement("div");
         areaTitle.className = "area-title";
         areaTitle.innerText = area.name;
@@ -137,23 +215,31 @@ function renderDashboard() {
                         <i class="fas fa-cog" onclick="openSedeModal(${area.id}, ${loc.id}, '${loc.name}')" title="Configurar Sede"></i>
                     </div>
                 </div>`;
+
             const grid = document.createElement("div");
             grid.className = "computer-grid";
+
             loc.computers.forEach((comp) => {
                 const item = document.createElement("div");
                 item.className = "computer-item";
                 item.onclick = () => openCompModal(loc.id, comp);
+
                 const iconClass = comp.type === 'server' ? 'fa-server' : 'fa-desktop';
                 const statusClass = comp.status ? 'status-true' : 'status-false';
+
                 item.innerHTML = `
                     <div class="icon-wrapper"><i class="fas ${iconClass}"></i></div>
                     <div class="status-indicator ${statusClass}"><span class="dot"></span></div>
-                    <div class="comp-info"><span class="comp-name">${comp.name}</span><span class="comp-host">${comp.hostname}</span></div>`;
+                    <div class="comp-info">
+                        <span class="comp-name">${comp.name}</span>
+                        <span class="comp-host">${comp.hostname}</span>
+                    </div>`;
                 grid.appendChild(item);
             });
             locCard.appendChild(grid);
             areaCol.appendChild(locCard);
         });
+
         const btnAddSede = document.createElement("button");
         btnAddSede.innerText = "+ Nueva Sede";
         btnAddSede.style.cssText = "background:transparent; border:2px dashed var(--border-color); color:var(--text-secondary); width:100%; padding:10px; cursor:pointer;";
@@ -163,27 +249,27 @@ function renderDashboard() {
     });
 }
 
-// --- MODALES Y CRUD ---
+// --- MODALES Y LOGICA CRUD EQUIPOS ---
 const modalComp = document.getElementById("modal-comp");
 const modalSede = document.getElementById("modal-sede");
-let currentSedeIdForComp = null;
-let currentCompId = null;
-let currentAreaIdForSede = null;
-let currentSedeId = null;
 
 function openCompModal(sedeId, compObj) {
     modalComp.style.display = "block";
     currentSedeIdForComp = sedeId;
+
     if (compObj) {
+        // Editar
         currentCompId = compObj.id;
         document.getElementById("modal-comp-title").innerText = "Editar Equipo";
         document.getElementById("comp-name").value = compObj.name;
         document.getElementById("comp-hostname").value = compObj.hostname;
         document.getElementById("comp-type").value = compObj.type;
         document.getElementById("comp-status").checked = compObj.status;
+
         document.getElementById("btn-delete-comp").style.display = "block";
         document.getElementById("btn-delete-comp").onclick = () => deleteComputer(currentCompId);
     } else {
+        // Nuevo
         currentCompId = null;
         document.getElementById("modal-comp-title").innerText = "Nuevo Equipo";
         document.getElementById("computer-form").reset();
@@ -203,31 +289,53 @@ if (document.getElementById("computer-form")) {
             status: document.getElementById("comp-status").checked,
             sede_id: currentSedeIdForComp
         };
+
         let url = '/api/equipos';
         let method = 'POST';
-        if (currentCompId) { url = `/api/equipos/${currentCompId}`; method = 'PUT'; }
-        await fetch(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+
+        if (currentCompId) {
+            url = `/api/equipos/${currentCompId}`;
+            method = 'PUT';
+        }
+
+        await fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
         modalComp.style.display = "none";
         fetchData();
     };
 }
 
 async function deleteComputer(id) {
-    if (confirm("¿Eliminar equipo?")) { await fetch(`/api/equipos/${id}`, { method: 'DELETE' }); modalComp.style.display = "none"; fetchData(); }
+    if (confirm("¿Eliminar equipo?")) {
+        await fetch(`/api/equipos/${id}`, { method: 'DELETE' });
+        modalComp.style.display = "none";
+        fetchData();
+    }
 }
 
+// --- LOGICA CRUD SEDES ---
 function openSedeModal(areaId, sedeId, sedeName) {
     modalSede.style.display = "block";
     currentAreaIdForSede = areaId;
     currentSedeId = sedeId;
+
     const title = document.getElementById("modal-sede-title");
     const nameInput = document.getElementById("sede-name");
     const delBtn = document.getElementById("btn-delete-sede");
+
     if (sedeId) {
-        title.innerText = "Editar Sede"; nameInput.value = sedeName;
-        delBtn.style.display = "block"; delBtn.onclick = () => deleteSede(sedeId);
+        title.innerText = "Editar Sede";
+        nameInput.value = sedeName;
+        delBtn.style.display = "block";
+        delBtn.onclick = () => deleteSede(sedeId);
     } else {
-        title.innerText = "Nueva Sede"; nameInput.value = ""; delBtn.style.display = "none";
+        title.innerText = "Nueva Sede";
+        nameInput.value = "";
+        delBtn.style.display = "none";
     }
 }
 
@@ -235,20 +343,35 @@ if (document.getElementById("sede-form")) {
     document.getElementById("sede-form").onsubmit = async (e) => {
         e.preventDefault();
         const name = document.getElementById("sede-name").value;
-        let url = '/api/sedes'; let method = 'POST';
+
+        let url = '/api/sedes';
+        let method = 'POST';
         let body = { name: name, area_id: currentAreaIdForSede };
-        if (currentSedeId) { url = `/api/sedes/${currentSedeId}`; method = 'PUT'; body = { name: name }; }
-        await fetch(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+        if (currentSedeId) {
+            url = `/api/sedes/${currentSedeId}`;
+            method = 'PUT';
+            body = { name: name };
+        }
+
+        await fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+
         modalSede.style.display = "none";
         fetchData();
     };
 }
 
 async function deleteSede(id) {
-    if (confirm("¿Eliminar sede y todos sus equipos?")) { await fetch(`/api/sedes/${id}`, { method: 'DELETE' }); modalSede.style.display = "none"; fetchData(); }
+    if (confirm("¿Eliminar sede y todos sus equipos?")) {
+        await fetch(`/api/sedes/${id}`, { method: 'DELETE' });
+        modalSede.style.display = "none";
+        fetchData();
+    }
 }
-
-function closeModal(id) { document.getElementById(id).style.display = "none"; }
 
 
 // ==========================================
@@ -276,13 +399,13 @@ async function loadUsers() {
     } catch (e) { console.error("Error usuarios", e); }
 }
 
-// Cargar Roles en el Select
 async function loadRolesSelect() {
     try {
         const res = await fetch('/api/roles');
         if (!res.ok) return;
         const roles = await res.json();
         const select = document.getElementById('u-rol');
+        if (!select) return;
         select.innerHTML = '';
         roles.forEach(r => {
             const opt = document.createElement('option');
@@ -294,6 +417,7 @@ async function loadRolesSelect() {
 }
 
 function openUserModal() { document.getElementById('modal-user').style.display = 'block'; }
+
 const formUser = document.getElementById('user-form');
 if (formUser) {
     formUser.onsubmit = async (e) => {
@@ -301,7 +425,7 @@ if (formUser) {
         const usuario = document.getElementById('u-user').value;
         const password = document.getElementById('u-pass').value;
         const nombre = document.getElementById('u-name').value;
-        const rol_id = document.getElementById('u-rol').value; // Rol ID
+        const rol_id = document.getElementById('u-rol').value;
 
         const res = await fetch('/api/users', {
             method: 'POST',
@@ -316,7 +440,13 @@ if (formUser) {
         } else { alert('Error al crear usuario'); }
     };
 }
-async function deleteUser(id) { if (confirm('¿Borrar usuario?')) { await fetch(`/api/users/${id}`, { method: 'DELETE' }); loadUsers(); } }
+
+async function deleteUser(id) {
+    if (confirm('¿Borrar usuario?')) {
+        await fetch(`/api/users/${id}`, { method: 'DELETE' });
+        loadUsers();
+    }
+}
 
 // ==========================================
 //  PARTE 3: TEMA CLARO/OSCURO
@@ -353,14 +483,20 @@ async function cargarProductosPrecios() {
         tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--red-status);">Error cargando datos</td></tr>';
     }
 }
+
 function renderTablaPrecios(lista) {
     const tbody = document.querySelector('#precios-table tbody');
     tbody.innerHTML = '';
     if (lista.length === 0) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">No se encontraron productos tipo 3.</td></tr>'; return; }
     lista.forEach(p => {
         const tr = document.createElement('tr');
-        const p1 = (p.PreTema1 || 0).toFixed(4); const p2 = (p.PreTema2 || 0).toFixed(4); const p3 = (p.PreTema3 || 0).toFixed(4);
-        const p4 = (p.PreTema4 || 0).toFixed(4); const p5 = (p.PreTema5 || 0).toFixed(4); const p6 = (p.PreTema6 || 0).toFixed(4);
+        // Formato 4 decimales
+        const p1 = (p.PreTema1 || 0).toFixed(4);
+        const p2 = (p.PreTema2 || 0).toFixed(4);
+        const p3 = (p.PreTema3 || 0).toFixed(4);
+        const p4 = (p.PreTema4 || 0).toFixed(4);
+        const p5 = (p.PreTema5 || 0).toFixed(4);
+        const p6 = (p.PreTema6 || 0).toFixed(4);
         tr.innerHTML = `
             <td><span style="font-weight:bold; font-size:0.85rem; color:var(--text-secondary)">${p.CodPro}</span><br>${p.Nombre}</td>
             <td><input type="number" step="0.0001" class="price-input" id="p1-${p.CodPro}" value="${p1}"></td>
@@ -374,6 +510,7 @@ function renderTablaPrecios(lista) {
         tbody.appendChild(tr);
     });
 }
+
 function filtrarTablaPrecios() {
     const texto = document.getElementById('search-product').value.toLowerCase().trim();
     const filas = document.querySelectorAll('#precios-table tbody tr');
@@ -385,10 +522,14 @@ function filtrarTablaPrecios() {
         }
     });
 }
+
 async function guardarPrecio(codPro) {
-    const p1 = document.getElementById(`p1-${codPro}`).value; const p2 = document.getElementById(`p2-${codPro}`).value;
-    const p3 = document.getElementById(`p3-${codPro}`).value; const p4 = document.getElementById(`p4-${codPro}`).value;
-    const p5 = document.getElementById(`p5-${codPro}`).value; const p6 = document.getElementById(`p6-${codPro}`).value;
+    const p1 = document.getElementById(`p1-${codPro}`).value;
+    const p2 = document.getElementById(`p2-${codPro}`).value;
+    const p3 = document.getElementById(`p3-${codPro}`).value;
+    const p4 = document.getElementById(`p4-${codPro}`).value;
+    const p5 = document.getElementById(`p5-${codPro}`).value;
+    const p6 = document.getElementById(`p6-${codPro}`).value;
     const btn = event.currentTarget; const icono = btn.querySelector('i');
     icono.className = "fas fa-spinner fa-spin";
     try {
@@ -417,6 +558,7 @@ async function consultarRevision() {
         renderRevisionCards(data);
     } catch (error) { grid.innerHTML = '<div style="color:var(--red-status); text-align:center;">Error al consultar datos</div>'; }
 }
+
 function renderRevisionCards(data) {
     const grid = document.getElementById('revision-grid');
     grid.innerHTML = '';
@@ -439,4 +581,112 @@ function renderRevisionCards(data) {
         card.innerHTML = `<div class="card-header"><span class="table-name">${t.title}</span><div class="traffic-light ${hasData ? 'light-green' : 'light-red'}"></div></div>${contentHTML}`;
         grid.appendChild(card);
     });
+}
+
+// ==========================================
+//  MÓDULO: REPORTES (SALIDA INSUMOS)
+// ==========================================
+async function cargarReporte(page) {
+    reportPage = page;
+    const empresa = document.getElementById('rep-empresa').value;
+    const year = document.getElementById('rep-anio').value;
+    const month = document.getElementById('rep-mes').value; // Lectura del mes
+    const tbody = document.querySelector('#report-table tbody');
+
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center">Cargando...</td></tr>';
+
+    try {
+        const res = await fetch('/api/reports/salida-insumos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ empresa, year, month, filters: reportFilters, page, pageSize: 50 })
+        });
+
+        if (!res.ok) throw new Error('Error datos');
+        const { data, totals } = await res.json();
+
+        // Render Totales
+        document.getElementById('sum-registros').innerText = totals.TotalRegistros || 0;
+        document.getElementById('sum-cantidad').innerText = totals.SumCantidad ? totals.SumCantidad.toFixed(2) : 0;
+        document.getElementById('sum-costo').innerText = totals.SumCosto ? totals.SumCosto.toFixed(2) : 0;
+
+        // Render Tabla
+        tbody.innerHTML = '';
+        if (data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center">No hay datos</td></tr>';
+            return;
+        }
+
+        data.forEach(row => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${row.Linea}</td>
+                <td>${row.Documento}</td>
+                <td>${row.Fecha}</td>
+                <td>${row.Almacen}</td>
+                <td>${row.codpro}</td>
+                <td>${row.Nombre}</td>
+                <td>${row.Razon}</td>
+                <td>${row.Cantidad}</td>
+                <td>${row.Costo}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        document.getElementById('page-info').innerText = `Pág ${page}`;
+
+    } catch (error) {
+        console.error(error);
+        tbody.innerHTML = '<tr><td colspan="9" style="color:red; text-align:center">Error de servidor</td></tr>';
+    }
+}
+
+function cambiarPagina(delta) {
+    const newPage = reportPage + delta;
+    if (newPage >= 1) cargarReporte(newPage);
+}
+
+function limpiarFiltrosReporte() {
+    reportFilters = {};
+    document.querySelectorAll('.col-filter').forEach(i => i.value = '');
+    cargarReporte(1);
+}
+
+async function exportarExcel() {
+    const empresa = document.getElementById('rep-empresa').value;
+    const year = document.getElementById('rep-anio').value;
+    const month = document.getElementById('rep-mes').value;
+
+    // Notificar descarga
+    const btn = event.currentTarget;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generando...';
+    btn.disabled = true;
+
+    try {
+        const res = await fetch('/api/reports/salida-insumos/export', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ empresa, year, month, filters: reportFilters })
+        });
+
+        if (res.ok) {
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Reporte_Salidas_${empresa}_${year}.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        } else {
+            alert('Error al exportar');
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Error de conexión');
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
 }

@@ -16,6 +16,7 @@
     "body-parser": "^2.2.1",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
+    "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "express-session": "^1.18.2",
     "mssql": "^12.2.0"
