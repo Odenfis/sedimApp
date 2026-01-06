@@ -16,6 +16,7 @@
 
     --input-bg: #ffffff;
     --input-border: #d1d5db;
+    --input-readonly-bg: #e2e8f0;
 
     --accent: #2c5484;
     --accent-hover: #1e3a5c;
@@ -52,6 +53,8 @@
 
     --input-bg: #374151;
     --input-border: #4b5563;
+    /*--input-readonly-bg: #4b5563;*/
+    --input-readonly-bg: #475673;
 
     --accent: #3b82f6;
     --accent-hover: #2563eb;
@@ -178,6 +181,18 @@ button {
     padding: 0 !important;
 }
 
+/* Estilo para inputs de Solo Lectura */
+input:read-only,
+input[readonly] {
+    background-color: var(--input-readonly-bg);
+    color: var(--text-color);
+    /* Asegura que el texto se vea en ambos modos */
+    border-color: var(--border-color);
+    cursor: not-allowed;
+    opacity: 0.9;
+    font-weight: 600;
+    /* Un poco más negrita para resaltar que es un dato fijo */
+}
 
 /* =========================================
    3. LOGIN Y LOGOTIPO
@@ -917,6 +932,26 @@ tr:hover {
     border: 1px solid var(--border-color);
 }
 
+/* --- ACCIONES EN TABLA (Botones alineados) --- */
+.action-buttons {
+    display: flex;
+    gap: 8px;
+    /* Espacio entre botones */
+    justify-content: flex-start;
+    /* Alineados a la izquierda */
+    align-items: center;
+}
+
+/* Ajuste específico para botón eliminar pequeño */
+.btn-sm {
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+}
 
 /* =========================================
    6. MODALES Y ANIMACIONES

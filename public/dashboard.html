@@ -43,6 +43,20 @@
                     <i class="fas fa-cloud"></i> <span>Revisión Datos Nube</span>
                 </li>
 
+                <li class="has-submenu" data-module="operaciones">
+                    <div class="submenu-toggle" onclick="toggleSubmenu(this)">
+                        <div style="display:flex; align-items:center;">
+                            <i class="fas fa-cogs"></i> <span>Operaciones</span>
+                        </div>
+                        <i class="fas fa-chevron-down arrow-icon"></i>
+                    </div>
+                    <ul class="submenu">
+                        <li onclick="showView('prod-almacen')">
+                            <i class="fas fa-boxes"></i> <span>Productos Almacén</span>
+                        </li>
+                    </ul>
+                </li>
+
                 <li class="has-submenu" data-module="reportes">
                     <div class="submenu-toggle" onclick="toggleSubmenu(this)">
                         <div style="display:flex; align-items:center;">
@@ -153,6 +167,52 @@
                 </div>
                 <div id="revision-grid" class="revision-grid">
                     <div class="empty-state-message"><i class="fas fa-arrow-up"></i> Selecciona filtros y consulta</div>
+                </div>
+            </div>
+
+            <!-- VISTA: PRODUCTOS ALMACÉN -->
+            <div id="view-prod-almacen" class="view-section" style="display:none;">
+                <header>
+                    <h1>Productos Almacén</h1>
+                </header>
+
+                <div class="filters-container">
+                    <!-- Selector Empresa para filtrar lista -->
+                    <select id="prod-filter-empresa" onchange="buscarProductos(true)">
+                        <option value="02">Cocineria</option>
+                        <option value="04">Mar Picante</option>
+                        <option value="06">Abruzzo</option>
+                    </select>
+                    <!-- Buscador -->
+                    <input type="text" id="prod-search" placeholder="Buscar por nombre o código..."
+                        onkeyup="buscarProductos(true)">
+
+                    <button class="btn-save" onclick="abrirModalProducto(null)">
+                        <i class="fas fa-plus"></i> Nuevo Producto
+                    </button>
+                </div>
+
+                <div class="table-container">
+                    <table id="productos-table">
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>Nombre</th>
+                                <th>Línea</th>
+                                <th>Stock</th>
+                                <th>Costo</th>
+                                <th>P. Venta</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <!-- NUEVO: PAGINACIÓN PRODUCTOS -->
+                <div class="pagination-controls" style="margin-top: 15px;">
+                    <button onclick="cambiarPaginaProducto(-1)"><i class="fas fa-chevron-left"></i></button>
+                    <span id="prod-page-info" style="font-weight:bold; color:var(--text-color);">Pág 1</span>
+                    <button onclick="cambiarPaginaProducto(1)"><i class="fas fa-chevron-right"></i></button>
                 </div>
             </div>
 
@@ -268,6 +328,148 @@
                     Completo</label><input type="text" id="u-name" required><label>Rol</label><select id="u-rol"
                     required></select>
                 <div class="modal-actions"><button type="submit" class="btn-save">Crear Usuario</button></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL REGISTRO PRODUCTOS -->
+    <div id="modal-producto" class="modal">
+        <div class="modal-content" style="width: 800px; max-width: 95%;">
+            <span class="close" onclick="closeModal('modal-producto')">&times;</span>
+            <h2>Registro de Productos</h2>
+
+            <form id="form-producto" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+
+                <!-- Fila 1: Codigo y Barras -->
+                <div style="grid-column: 1 / -1; display: flex; gap: 10px; align-items: center;">
+                    <label>Código:</label>
+                    <!--<input type="text" id="p-codigo" readonly style="width: 100px; background: #eee;">-->
+                    <input type="text" id="p-codigo" readonly style="width: 100px;">
+                    <!-- Selector Empresa para Generar Código (Solo en nuevo) -->
+                    <select id="p-empresa-gen" style="width: 150px;" onchange="generarCodigoProducto()">
+                        <option value="" disabled selected>Elegir Empresa</option>
+                        <option value="02">Cocineria (02)</option>
+                        <option value="04">Mar Picante (04)</option>
+                        <option value="06">Abruzzo (06)</option>
+                    </select>
+
+                    <label style="margin-left:auto;">Cod. Barras:</label>
+                    <input type="text" id="p-codbar" style="width: 150px;">
+                </div>
+
+                <!-- Fila 2: Descripcion -->
+                <div style="grid-column: 1 / -1;">
+                    <label>Descripción:</label>
+                    <input type="text" id="p-nombre" required>
+                </div>
+
+                <!-- Columna Izquierda -->
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <div>
+                        <label>Línea:</label>
+                        <select id="p-linea" onchange="cargarClases(this.value)" required></select>
+                    </div>
+                    <div>
+                        <label>Clase:</label>
+                        <select id="p-clase" required></select>
+                    </div>
+                    <div>
+                        <label>Proveedor:</label>
+                        <select id="p-proveedor" required></select>
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <div><label>Peso:</label><input type="number" id="p-peso" step="0.001" value="0"></div>
+                        <div><label>Stock:</label><input type="number" id="p-stock" readonly value="0"></div>
+                    </div>
+
+                    <!-- Checkbox Afecto IGV -->
+                    <label class="checkbox-container">
+                        <input type="checkbox" id="p-afecto" checked onchange="calcularPrecios()">
+                        <span class="checkmark"></span> Afecto al IGV
+                    </label>
+
+                    <!-- nuevo agregado para el tema de comisiones-->
+                    <!-- NUEVO: CAMPO COMISIÓN CON CANDADO -->
+                    <div style="margin-top: 10px;">
+                        <label>Comisión:</label>
+                        <div style="display: flex; gap: 5px;">
+                            <input type="number" id="p-comision" value="0" readonly
+                                style="background: var(--input-readonly-bg);">
+                            <button type="button" class="btn-update" onclick="abrirModalPassword('COMISION')"
+                                title="Desbloquear">
+                                <i class="fas fa-lock"></i>
+                            </button>
+                        </div>
+                    </div>
+
+
+                </div>
+
+                <!-- Columna Derecha -->
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <div>
+                        <label>Tipo Producto:</label>
+                        <select id="p-tipo" required></select>
+                    </div>
+                    <div>
+                        <label>Unidad Medida:</label>
+                        <select id="p-unimed" required></select>
+                    </div>
+
+                    <!-- PRECIOS -->
+                    <div style="background: var(--bg-color); padding: 10px; border-radius: 8px;">
+                        <h4 style="margin: 0 0 10px 0;">Precios y Costos</h4>
+
+                        <div style="display: flex; gap: 10px; margin-bottom: 5px;">
+                            <div style="flex:1;">
+                                <label>P. Costo (Sin IGV)</label>
+                                <input type="number" id="p-costo" readonly>
+                            </div>
+                            <div style="flex:1;">
+                                <label>Costo Real (Inc IGV)</label>
+                                <input type="number" id="p-costoreal" step="0.01" required oninput="calcularPrecios()">
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: 10px;">
+                            <div style="flex:1;">
+                                <label>Precio Final (Inc. IGV)</label>
+                                <input type="number" id="p-preciofinal" step="0.01" required oninput="calcularVenta()">
+                            </div>
+                            <div style="flex:1;">
+                                <label>Valor Venta (Calc)</label>
+                                <input type="number" id="p-pventa" readonly>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 10px;">
+                        <div><label>Temp Max:</label><input type="number" id="p-tempmax" value="0"></div>
+                        <div><label>Temp Min:</label><input type="number" id="p-tempmin" value="0"></div>
+                    </div>
+                </div>
+
+                <!-- Botones Footer -->
+                <div class="modal-actions" style="grid-column: 1 / -1; margin-top: 20px;">
+                    <button type="submit" class="btn-save">Registrar</button>
+                    <button type="button" class="btn-delete" onclick="closeModal('modal-producto')">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL PASSWORD -->
+    <div id="modal-password" class="modal" style="z-index: 200;"> <!-- Z-index mayor para estar encima -->
+        <div class="modal-content" style="width: 300px;">
+            <span class="close" onclick="closeModal('modal-password')">&times;</span>
+            <h2 style="font-size: 1.1rem;">Ingrese Clave</h2>
+            <form id="form-validate-pass">
+                <input type="hidden" id="pass-type"> <!-- Para saber qué estamos desbloqueando -->
+                <input type="password" id="pass-input" placeholder="Contraseña..." required
+                    style="text-align: center; font-size: 1.2rem;">
+                <div class="modal-actions">
+                    <button type="submit" class="btn-save">Validar</button>
+                </div>
             </form>
         </div>
     </div>
