@@ -463,15 +463,49 @@ function renderDashboard() {
         btnAddSede.onclick = () => openSedeModal(area.id, null, ''); areaCol.appendChild(btnAddSede); container.appendChild(areaCol);
     });
 }
+
+// --- MODALES Y LOGICA CRUD EQUIPOS ---
+const modalComp = document.getElementById("modal-comp");
+const modalSede = document.getElementById("modal-sede");
+
 function openCompModal(sedeId, compObj) {
-    const modalComp = document.getElementById("modal-comp");
-    modalComp.style.display = "block"; currentSedeIdForComp = sedeId;
+    modalComp.style.display = "block";
+    currentSedeIdForComp = sedeId;
+
+    // Referencia segura al título
+    const titleEl = document.getElementById("modal-comp-title");
+    const deleteBtn = document.getElementById("btn-delete-comp");
+
     if (compObj) {
-        currentCompId = compObj.id; document.getElementById("modal-comp-title").innerText = "Editar Equipo"; document.getElementById("comp-name").value = compObj.name; document.getElementById("comp-hostname").value = compObj.hostname; document.getElementById("comp-type").value = compObj.type; document.getElementById("comp-status").checked = compObj.status; document.getElementById("btn-delete-comp").style.display = "block"; document.getElementById("btn-delete-comp").onclick = () => deleteComputer(currentCompId);
+        // MODO EDITAR
+        currentCompId = compObj.id;
+
+        // Si existe el elemento título, lo actualizamos. Si no, no pasa nada.
+        if (titleEl) titleEl.innerText = "Editar Equipo";
+
+        // Llenado de datos (Con validación por si vienen vacíos)
+        document.getElementById("comp-name").value = compObj.name || '';
+        document.getElementById("comp-hostname").value = compObj.hostname || '';
+        document.getElementById("comp-type").value = compObj.type || 'desktop';
+        document.getElementById("comp-status").checked = compObj.status; // true/false
+
+        if (deleteBtn) {
+            deleteBtn.style.display = "block";
+            deleteBtn.onclick = () => deleteComputer(currentCompId);
+        }
     } else {
-        currentCompId = null; document.getElementById("modal-comp-title").innerText = "Nuevo Equipo"; document.getElementById("computer-form").reset(); document.getElementById("comp-type").value = "desktop"; document.getElementById("comp-status").checked = true; document.getElementById("btn-delete-comp").style.display = "none";
+        // MODO NUEVO
+        currentCompId = null;
+        if (titleEl) titleEl.innerText = "Nuevo Equipo";
+
+        document.getElementById("computer-form").reset();
+        document.getElementById("comp-type").value = "desktop";
+        document.getElementById("comp-status").checked = true;
+
+        if (deleteBtn) deleteBtn.style.display = "none";
     }
 }
+
 if (document.getElementById("computer-form")) {
     document.getElementById("computer-form").onsubmit = async (e) => { e.preventDefault(); const data = { name: document.getElementById("comp-name").value, hostname: document.getElementById("comp-hostname").value, type: document.getElementById("comp-type").value, status: document.getElementById("comp-status").checked, sede_id: currentSedeIdForComp }; let url = '/api/equipos'; let method = 'POST'; if (currentCompId) { url = `/api/equipos/${currentCompId}`; method = 'PUT'; } await fetch(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }); document.getElementById("modal-comp").style.display = "none"; fetchData(); };
 }

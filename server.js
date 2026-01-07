@@ -82,22 +82,37 @@ app.delete('/api/users/:id', isAuthenticated, async (req, res) => {
 // ==========================================
 //  CONTROL DE EQUIPOS
 // ==========================================
+// --- EQUIPOS (CONTROL DE EQUIPOS) ---
 app.get('/api/structure', isAuthenticated, async (req, res) => {
     try {
         const pool = await getConnection();
         const areas = (await pool.request().query("SELECT * FROM Equipos_Areas ORDER BY id")).recordset;
         const sedes = (await pool.request().query("SELECT * FROM Equipos_Sedes WHERE eliminado=0 ORDER BY id")).recordset;
         const equipos = (await pool.request().query("SELECT * FROM Equipos_Computadoras WHERE eliminado=0 ORDER BY id")).recordset;
+
         const structure = areas.map(area => ({
-            id: area.id, name: area.nombre,
+            id: area.id,
+            name: area.nombre || area.Nombre, // Aseguramos que lea el nombre
             locations: sedes.filter(s => s.id_area === area.id).map(sede => ({
-                id: sede.id, name: sede.nombre,
-                computers: equipos.filter(e => e.id_sede === sede.id).map(eq => ({ id: eq.id, name: eq.nombre, hostname: eq.hostname, type: eq.tipo, status: eq.status }))
+                id: sede.id,
+                name: sede.nombre || sede.Nombre, // Aseguramos que lea el nombre
+                computers: equipos.filter(e => e.id_sede === sede.id).map(eq => ({
+                    id: eq.id,
+                    // AQUÍ ESTÁ EL CAMBIO IMPORTANTE:
+                    name: eq.nombre || eq.Nombre || '',
+                    hostname: eq.hostname || eq.Hostname || '',
+                    type: eq.tipo || eq.Tipo || 'desktop',
+                    status: eq.status
+                }))
             }))
         }));
         res.json({ areas: structure });
-    } catch (error) { res.status(500).send("Error"); }
+    } catch (error) {
+        console.error("Error structure:", error); // Log para ver errores en consola
+        res.status(500).send("Error");
+    }
 });
+
 app.post('/api/equipos', isAuthenticated, async (req, res) => {
     const { name, hostname, type, status, sede_id } = req.body;
     try { const pool = await getConnection(); await pool.request().input('n', sql.NVarChar, name).input('h', sql.NVarChar, hostname).input('t', sql.NVarChar, type).input('s', sql.Bit, status).input('sid', sql.Int, sede_id).query("INSERT INTO Equipos_Computadoras (nombre, hostname, tipo, status, id_sede) VALUES (@n, @h, @t, @s, @sid)"); res.json({ message: 'Ok' }); } catch (e) { res.status(500).send(e.message); }

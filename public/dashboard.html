@@ -299,18 +299,36 @@
     </div>
 
     <!-- Modales -->
+    <!-- MODAL EQUIPOS -->
     <div id="modal-comp" class="modal">
-        <div class="modal-content"> <span class="close" onclick="closeModal('modal-comp')">&times;</span>
-            <h2>Equipo</h2>
-            <form id="computer-form"><input type="hidden" id="comp-indices"> <label>Nombre</label><input type="text"
-                    id="comp-name" required><label>Hostname</label><input type="text" id="comp-hostname"
-                    required><label>Tipo</label><select id="comp-type">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('modal-comp')">&times;</span>
+            <!-- EL ID AQUÍ ES CRUCIAL: modal-comp-title -->
+            <h2 id="modal-comp-title">Gestión de Equipo</h2>
+            <form id="computer-form">
+                <input type="hidden" id="comp-indices">
+
+                <label>Nombre</label>
+                <input type="text" id="comp-name" required>
+
+                <label>Hostname</label>
+                <input type="text" id="comp-hostname" required>
+
+                <label>Tipo</label>
+                <select id="comp-type">
                     <option value="desktop">PC Escritorio</option>
                     <option value="server">Servidor</option>
-                </select><label class="checkbox-container"><input type="checkbox" id="comp-status"><span
-                        class="checkmark"></span> Estado Actualizado</label>
-                <div class="modal-actions"><button type="submit" class="btn-save">Guardar</button><button type="button"
-                        id="btn-delete-comp" class="btn-delete">Eliminar</button></div>
+                </select>
+
+                <label class="checkbox-container">
+                    <input type="checkbox" id="comp-status">
+                    <span class="checkmark"></span> Estado Actualizado
+                </label>
+
+                <div class="modal-actions">
+                    <button type="submit" class="btn-save">Guardar</button>
+                    <button type="button" id="btn-delete-comp" class="btn-delete">Eliminar</button>
+                </div>
             </form>
         </div>
     </div>
