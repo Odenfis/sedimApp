@@ -5,34 +5,24 @@
     /* --- MODO CLARO (Default) --- */
     --bg-color: #f3f4f6;
     --card-bg: #ffffff;
-
     --sidebar-bg: #ffffff;
     --sidebar-text: #4b5563;
     --sidebar-active: #e5e7eb;
-
     --text-color: #1f2937;
     --text-secondary: #6b7280;
     --border-color: #e5e7eb;
-
     --input-bg: #ffffff;
     --input-border: #d1d5db;
     --input-readonly-bg: #e2e8f0;
-
     --accent: #2c5484;
     --accent-hover: #1e3a5c;
-
     --green-status: #10b981;
     --red-status: #ef4444;
-
     --table-header-bg: #f9fafb;
     --table-header-text: #374151;
     --table-row-hover: #f3f4f6;
-
     --logo-container-bg: #1f2937;
-
     --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-
-    /* Variables de Dimensiones Sidebar */
     --sidebar-width: 260px;
     --sidebar-width-collapsed: 70px;
 }
@@ -41,31 +31,22 @@
     /* --- MODO OSCURO --- */
     --bg-color: #111827;
     --card-bg: #1f2937;
-
     --sidebar-bg: #111827;
     --sidebar-text: #9ca3af;
     --sidebar-active: #374151;
-
     --text-color: #f9fafb;
     --text-secondary: #9ca3af;
-
     --border-color: #374151;
-
     --input-bg: #374151;
     --input-border: #4b5563;
-    /*--input-readonly-bg: #4b5563;*/
     --input-readonly-bg: #475673;
-
     --accent: #3b82f6;
     --accent-hover: #2563eb;
-
     --green-status: #34d399;
     --red-status: #f87171;
-
     --table-header-bg: #1f2937;
     --table-header-text: #f3f4f6;
     --table-row-hover: #374151;
-
     --logo-container-bg: transparent;
 }
 
@@ -110,6 +91,17 @@ select:focus {
     box-shadow: 0 0 0 2px var(--accent);
 }
 
+/* Solo lectura */
+input:read-only,
+input[readonly] {
+    background-color: var(--input-readonly-bg);
+    color: var(--text-color);
+    border-color: var(--border-color);
+    cursor: not-allowed;
+    opacity: 0.9;
+    font-weight: 600;
+}
+
 button {
     cursor: pointer;
     transition: 0.2s;
@@ -148,23 +140,19 @@ button {
     background: transparent;
     border: 1px solid var(--border-color);
     color: var(--text-color);
-
-    /* Reseteo Absoluto */
     padding: 0;
     margin: 0;
-
-    /* Dimensiones Fijas */
-    width: 38px;
-    height: 38px;
+    width: 35px;
+    height: 35px;
+    min-width: 35px;
+    min-height: 35px;
     border-radius: 50%;
-
-    /* CENTRADO PERFECTO USANDO GRID */
-    display: grid;
-    place-items: center;
-    place-content: center;
-
+    display: flex;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
     transition: all 0.2s ease;
+    line-height: 0;
 }
 
 .theme-toggle:hover {
@@ -173,25 +161,13 @@ button {
 }
 
 .theme-toggle i {
-    /* El icono se comporta como bloque y ocupa solo lo necesario */
     display: block;
     font-size: 1.1rem;
     line-height: 1;
     margin: 0 !important;
     padding: 0 !important;
-}
-
-/* Estilo para inputs de Solo Lectura */
-input:read-only,
-input[readonly] {
-    background-color: var(--input-readonly-bg);
-    color: var(--text-color);
-    /* Asegura que el texto se vea en ambos modos */
-    border-color: var(--border-color);
-    cursor: not-allowed;
-    opacity: 0.9;
-    font-weight: 600;
-    /* Un poco más negrita para resaltar que es un dato fijo */
+    width: auto;
+    height: auto;
 }
 
 /* =========================================
@@ -233,16 +209,13 @@ input[readonly] {
     margin-top: 10px;
 }
 
-/* --- CORRECCIÓN POSICIÓN LUNA LOGIN --- */
 .login-theme-btn {
     position: fixed;
-    /* Fixed para que sea relativo a la ventana, no al body */
     top: 25px;
     right: 25px;
     z-index: 1000;
 }
 
-/* Wrapper contraseña con ojo */
 .password-wrapper {
     position: relative;
     width: 100%;
@@ -279,7 +252,6 @@ input[readonly] {
     position: relative;
 }
 
-/* Sidebar Base */
 .sidebar {
     width: var(--sidebar-width);
     background: var(--sidebar-bg);
@@ -292,42 +264,52 @@ input[readonly] {
     flex-shrink: 0;
 }
 
+/* Header Normal */
 .sidebar-header {
     display: flex;
-    flex-direction: column;
-    gap: 15px;
-    margin-bottom: 2rem;
+    justify-content: space-between;
     align-items: center;
-}
-
-/* --- HEADER: Botón pegado a la izquierda --- */
-.brand-container {
-    display: flex;
-    justify-content: flex-start;
-    gap: 15px;
     width: 100%;
-    align-items: center;
-    padding: 0 10px;
+    padding: 0 5px;
+    margin-bottom: 2rem;
+    box-sizing: border-box;
+    min-height: 40px;
 }
 
 .brand {
     color: var(--text-color);
-    font-size: 1.25rem;
+    font-size: 1.2rem;
     font-weight: 800;
     white-space: nowrap;
     overflow: hidden;
     transition: opacity 0.2s;
 }
 
+.header-tools {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
 .toggle-btn {
     background: transparent;
     color: var(--text-secondary);
-    font-size: 1.2rem;
+    font-size: 1.3rem;
     padding: 5px;
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    width: 35px;
 }
 
-/* Lista Menú */
+.toggle-btn:hover {
+    background: var(--sidebar-active);
+    color: var(--accent);
+}
+
+/* Menú */
 .sidebar ul {
     list-style: none;
     padding: 0;
@@ -364,16 +346,12 @@ input[readonly] {
     margin-right: 12px;
 }
 
-/* --- ESTILOS DE SUBMENÚ (Alineación corregida) --- */
+/* Submenu */
 .has-submenu {
-    /* Quitamos el padding del LI padre para que no sume doble padding */
     padding: 0 !important;
-    /*
-    display: block !important;*/
 }
 
 .submenu-toggle {
-    /* El padding se aplica aquí para igualar a los otros LI */
     padding: 12px 15px;
     display: flex;
     justify-content: space-between;
@@ -381,7 +359,6 @@ input[readonly] {
     cursor: pointer;
     width: 100%;
     box-sizing: border-box;
-    /* Asegura que el padding no rompa el ancho */
     color: var(--sidebar-text);
 }
 
@@ -410,7 +387,6 @@ input[readonly] {
     display: block;
 }
 
-/* Footer Sidebar */
 .sidebar-footer {
     border-top: 1px solid var(--border-color);
     padding-top: 15px;
@@ -420,42 +396,90 @@ input[readonly] {
     color: var(--red-status) !important;
 }
 
-/* --- ESTADO COLAPSADO (SOLO ESCRITORIO) --- */
+/* --- ESTADO COLAPSADO (SOLO ESCRITORIO) - CORREGIDO --- */
 .sidebar.collapsed {
     width: var(--sidebar-width-collapsed);
+    padding: 20px 0;
 }
 
+/* Ocultar SOLO textos y flechas (No ocultar .submenu-toggle) */
 .sidebar.collapsed .brand,
 .sidebar.collapsed li span,
 .sidebar.collapsed .arrow-icon {
-    display: none;
-    opacity: 0;
+    display: none !important;
 }
 
-/* Ocultamos submenu en colapsado para evitar bugs visuales */
+/* Asegurar que los submenús desplegados no estorben */
 .sidebar.collapsed .submenu {
     display: none !important;
 }
 
-.sidebar.collapsed .brand-container {
-    justify-content: center;
+/* Header colapsado: Hamburguesa arriba, Luna abajo */
+.sidebar.collapsed .sidebar-header {
+    flex-direction: column;
+    gap: 15px;
     padding: 0;
+    justify-content: center;
+}
+
+.sidebar.collapsed .header-tools {
+    flex-direction: column-reverse;
+    gap: 15px;
+    width: 100%;
+    justify-content: center;
 }
 
 .sidebar.collapsed .toggle-btn {
     margin: 0;
 }
 
-.sidebar.collapsed li {
+/* --- ÍTEMS DEL MENÚ (Cuadrados centrados) --- */
+.sidebar.collapsed ul li {
+    width: 45px;
+    height: 45px;
+    margin: 5px auto;
+    padding: 0 !important;
+    display: flex;
     justify-content: center;
-    padding: 12px 0;
+    align-items: center;
+    border-radius: 10px;
+    position: relative;
+    /* Para manejo de clicks */
 }
 
-.sidebar.collapsed i {
-    margin-right: 0;
+/* Ajuste específico para los contenedores de submenú (Operaciones/Reportes) */
+.sidebar.collapsed .submenu-toggle {
+    display: flex !important;
+    /* Forzamos que se vea */
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    padding: 0 !important;
 }
 
-/* Botón Hamburguesa Móvil */
+/* El div interno del submenú que agrupa icono+texto */
+.sidebar.collapsed .submenu-toggle>div {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+}
+
+/* --- ÍCONO CENTRAL --- */
+/* Esto aplica tanto a los LI directos como a los iconos dentro de submenús */
+.sidebar.collapsed ul li i {
+    margin: 0 !important;
+    padding: 0 !important;
+    min-width: 0 !important;
+    /* Mata el ancho mínimo anterior */
+    width: auto !important;
+    font-size: 1.2rem;
+    line-height: 1;
+    display: block;
+}
+
+/* Botón Hamburguesa Móvil (Sin cambios) */
 .mobile-menu-btn {
     display: none;
     position: absolute;
@@ -481,7 +505,6 @@ input[readonly] {
     z-index: 45;
     backdrop-filter: blur(2px);
 }
-
 
 /* =========================================
    5. CONTENIDO GENERAL
@@ -522,8 +545,7 @@ input[readonly] {
     min-width: 200px;
 }
 
-
-/* --- DASHBOARD: CONTROL DE EQUIPOS --- */
+/* Dashboard */
 .dashboard-container {
     display: flex;
     gap: 20px;
@@ -592,7 +614,7 @@ input[readonly] {
     color: var(--accent);
 }
 
-/* --- GRID DE EQUIPOS (ESPACIOSO) --- */
+/* Grid Equipos */
 .computer-grid {
     display: flex;
     flex-wrap: wrap;
@@ -672,8 +694,7 @@ input[readonly] {
     word-break: break-all;
 }
 
-
-/* --- MÓDULO REVISIÓN NUBE --- */
+/* REVISIÓN NUBE */
 .revision-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -795,7 +816,7 @@ input[readonly] {
     padding: 40px;
 }
 
-/* --- NUEVOS ESTILOS REPORTES --- */
+/* REPORTES */
 .report-top-bar {
     display: flex;
     justify-content: space-between;
@@ -848,8 +869,7 @@ input[readonly] {
     margin-bottom: 5px;
 }
 
-
-/* --- TABLAS Y PRECIOS --- */
+/* Tablas */
 .table-container {
     background: var(--card-bg);
     border-radius: 8px;
@@ -882,7 +902,7 @@ th {
 }
 
 tr:hover {
-    background-color: var(--table-row-hover);
+    background: var(--table-row-hover);
 }
 
 .col-filter {
@@ -895,16 +915,13 @@ tr:hover {
     border-radius: 4px;
 }
 
-/* --- INPUTS DE PRECIO CON 4 DECIMALES --- */
 .price-input {
     width: 110px;
-    /* Ancho aumentado para que entren 4 decimales */
     padding: 6px;
     text-align: right;
     background: var(--bg-color);
     border: 1px solid var(--border-color);
     font-variant-numeric: tabular-nums;
-    /* Alineación numérica perfecta */
 }
 
 .btn-update {
@@ -932,17 +949,13 @@ tr:hover {
     border: 1px solid var(--border-color);
 }
 
-/* --- ACCIONES EN TABLA (Botones alineados) --- */
 .action-buttons {
     display: flex;
     gap: 8px;
-    /* Espacio entre botones */
     justify-content: flex-start;
-    /* Alineados a la izquierda */
     align-items: center;
 }
 
-/* Ajuste específico para botón eliminar pequeño */
 .btn-sm {
     padding: 0;
     width: 32px;
@@ -953,9 +966,7 @@ tr:hover {
     border-radius: 4px;
 }
 
-/* =========================================
-   6. MODALES Y ANIMACIONES
-   ========================================= */
+/* MODAL */
 .modal {
     display: none;
     position: fixed;
@@ -971,17 +982,12 @@ tr:hover {
 .modal-content {
     background: var(--card-bg);
     margin: 2% auto;
-    /*margin: 5% auto;*/
     border: 1px solid var(--border-color);
     width: 400px;
     border-radius: 12px;
     animation: slideDown 0.3s;
-    /*nuevo agregado para pantallas mas pequeñas*/
-    max-width: 90vh;
-    /* Nunca más alto que el 90% de la pantalla */
+    max-height: 90vh;
     overflow-y: auto;
-    /* Permite desplazamiento vertical si el contenido es muy largo */
-    /* Estilo opcional para que la barra de scroll se vea bien */
     scrollbar-width: thin;
 }
 
@@ -1056,12 +1062,7 @@ form label {
     margin: 0;
 }
 
-
-/* =========================================
-   7. MEDIA QUERIES (RESPONSIVE)
-   ========================================= */
-
-/* TABLET (iPad) Y MÓVIL (< 1024px) */
+/* MEDIA QUERIES */
 @media (max-width: 1024px) {
     .sidebar {
         position: fixed;
@@ -1093,33 +1094,21 @@ form label {
     }
 }
 
-/* FIX IPAD / TABLET FILTERS: EVITAR SUPERPOSICIÓN DEL BOTÓN */
-/* En pantallas medianas (Tablets/iPad), convertimos la barra de filtros en Grid */
 @media (max-width: 1200px) {
     .revision-filters {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        /* 2 columnas */
         gap: 15px;
         align-items: end;
     }
 
-    /* El botón toma todo el ancho abajo */
     .revision-filters button {
         grid-column: 1 / -1;
         width: 100% !important;
         margin-top: 10px;
     }
-
-    /* Aseguramos que los inputs no se desborden */
-    .revision-filters input,
-    .revision-filters select {
-        width: 100%;
-        min-width: 0;
-    }
 }
 
-/* MÓVIL PEQUEÑO (iPhone) (< 768px) */
 @media (max-width: 768px) {
     .content {
         padding: 1rem;
@@ -1136,7 +1125,6 @@ form label {
         margin-top: 10px;
     }
 
-    /* El grid de revisión también se hace 1 sola columna */
     .revision-filters {
         grid-template-columns: 1fr;
     }
@@ -1181,7 +1169,6 @@ form label {
     }
 }
 
-/* Ajuste extra para pantallas con poca altura */
 @media (max-height: 800px) {
     .modal-content {
         margin: 1% auto;
