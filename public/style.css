@@ -970,11 +970,19 @@ tr:hover {
 
 .modal-content {
     background: var(--card-bg);
-    margin: 5% auto;
+    margin: 2% auto;
+    /*margin: 5% auto;*/
     border: 1px solid var(--border-color);
     width: 400px;
     border-radius: 12px;
     animation: slideDown 0.3s;
+    /*nuevo agregado para pantallas mas pequeñas*/
+    max-width: 90vh;
+    /* Nunca más alto que el 90% de la pantalla */
+    overflow-y: auto;
+    /* Permite desplazamiento vertical si el contenido es muy largo */
+    /* Estilo opcional para que la barra de scroll se vea bien */
+    scrollbar-width: thin;
 }
 
 @keyframes slideDown {
@@ -1170,5 +1178,13 @@ form label {
 
     .filter-mini {
         width: 100% !important;
+    }
+}
+
+/* Ajuste extra para pantallas con poca altura */
+@media (max-height: 800px) {
+    .modal-content {
+        margin: 1% auto;
+        max-height: 95vh;
     }
 }
