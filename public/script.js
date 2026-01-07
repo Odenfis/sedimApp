@@ -238,21 +238,19 @@ function calcularPrecios() {
 }
 
 function calcularVenta() {
-    /*
-    const precioFinal = parseFloat(document.getElementById('p-preciofinal').value) || 0;
-    const afecto = document.getElementById('p-afecto').checked;
-    let valorVenta = precioFinal;
-    if (afecto) valorVenta = precioFinal / IGV_FACTOR;
-    document.getElementById('p-pventa').value = valorVenta.toFixed(2);*/
-
     // El usuario ingresa PRECIO FINAL
     const precioFinal = parseFloat(document.getElementById('p-preciofinal').value) || 0;
     const afecto = document.getElementById('p-afecto').checked;
 
     let valorVenta = precioFinal;
 
+    // Regla: Siempre dividir entre 1.10 para hallar el valor de venta base
+    // Usamos la constante 1.10 directamente o la variable global si prefieres
+    // Como pediste explícitamente 1.10 (10%), usaremos esa lógica dura o la variable GLOBAL_IGVV_PCT.
+
     if (afecto) {
-        // Usamos la tasa IGVV (10%) de la tabla Valores
+        // Usamos la variable global cargada de la BD (que debería ser 10)
+        // Factor = 1 + (10 / 100) = 1.10
         const factor = 1 + (GLOBAL_IGVV_PCT / 100);
         valorVenta = precioFinal / factor;
     }
@@ -357,7 +355,19 @@ async function abrirModalProducto(codPro) {
             document.getElementById('p-unimed').value = p.Unimed;
             document.getElementById('p-costo').value = p.Costo;
             document.getElementById('p-costoreal').value = p.CosReal ? p.CosReal.toFixed(2) : '0.00';
-            document.getElementById('p-preciofinal').value = p.PventaMa ? p.PventaMa.toFixed(2) : '0.00';
+            // Lógica inversa: La BD tiene el Valor Venta Base (PventaMa)
+            // Queremos mostrar el Precio Final (Base * 1.10)
+            let baseVentaBD = p.PventaMa !== null && p.PventaMa !== undefined ? p.PventaMa : 0;
+            let precioFinalCalc = baseVentaBD;
+
+            if (p.Afecto) {
+                // Si es afecto, multiplicamos por 1.10 para mostrar el precio final
+                const factor = 1 + (GLOBAL_IGVV_PCT / 100);
+                precioFinalCalc = baseVentaBD * factor;
+            }
+
+            document.getElementById('p-preciofinal').value = parseFloat(precioFinalCalc).toFixed(2);
+
             document.getElementById('p-tempmax').value = p.TemMax;
             document.getElementById('p-tempmin').value = p.TemMin;
             document.getElementById('p-comision').value = p.Comision || 0;

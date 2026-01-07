@@ -320,25 +320,80 @@ app.get('/api/productos/:id', isAuthenticated, async (req, res) => {
     } catch (e) { res.status(500).send('Error producto'); }
 });
 
-// 6. Guardar/Editar Producto
+// 6. Guardar/Editar Producto (CON LÓGICA DE PRECIOS Y COMISIONES)
 app.post('/api/productos', isAuthenticated, async (req, res) => {
     const p = req.body;
     try {
         const pool = await getConnection();
+
+        // --- REGLA 1: CÁLCULO DE PRECIOS ---
+        // El frontend nos envía el "Precio Final" en la propiedad PventaMa.
+        // Debemos dividirlo entre 1.10 para obtener el Valor de Venta Base.
+        const precioFinal = parseFloat(p.PventaMa) || 0;
+        const valorVentaBase = precioFinal / 1.10; // Dividimos entre 1.10 (10%)
+
+        // --- REGLA 2: COMISIONES ---
+        const comision = parseFloat(p.Comision) || 0;
+        let comH = null, comV = null, comR = null;
+
+        // Si la comisión es 0, llenamos las otras con 0.
+        // Si tiene valor, replicamos ese valor (o déjalo null si esa es tu lógica, aquí asumiré replicar o 0)
+        if (comision === 0) {
+            comH = 0; comV = 0; comR = 0;
+        } else {
+            // Opcional: Si quieres que se llenen con el mismo valor si no es 0
+            comH = comision; comV = comision; comR = comision;
+        }
+
         const request = pool.request()
-            .input('cod', sql.Char(10), p.CodPro).input('nom', sql.VarChar(70), p.Nombre).input('bar', sql.Char(15), p.CodBar || '').input('lin', sql.Int, p.Clinea).input('cla', sql.Int, p.Clase).input('pro', sql.Char(4), p.CodProv).input('pes', sql.Decimal(9, 3), p.Peso || 0).input('min', sql.Decimal(9, 2), p.Minimo || 0).input('stk', sql.Decimal(9, 2), p.Stock || 0).input('afe', sql.Bit, p.Afecto).input('tip', sql.Int, p.Tipo).input('cos', sql.Money, p.Costo).input('pvm', sql.Money, p.PventaMa).input('pvi', sql.Money, p.PventaMi || 0).input('uni', sql.Int, p.Unimed).input('com', sql.Float, p.Comision || 0).input('reg', sql.Char(50), p.RegSanit || '').input('tem', sql.Int, p.TempMax || 0).input('tmi', sql.Int, p.TemMin || 0).input('cre', sql.Money, p.CosReal || 0);
+            .input('cod', sql.Char(10), p.CodPro)
+            .input('nom', sql.VarChar(70), p.Nombre)
+            .input('bar', sql.Char(15), p.CodBar || '')
+            .input('lin', sql.Int, p.Clinea)
+            .input('cla', sql.Int, p.Clase)
+            .input('pro', sql.Char(4), p.CodProv)
+            .input('pes', sql.Decimal(9, 3), p.Peso || 0)
+            .input('min', sql.Decimal(9, 2), p.Minimo || 0)
+            .input('stk', sql.Decimal(9, 2), p.Stock || 0)
+            .input('afe', sql.Bit, p.Afecto)
+            .input('tip', sql.Int, p.Tipo)
+            .input('cos', sql.Money, p.Costo)
+
+            // USAMOS EL VALOR CALCULADO (/1.10)
+            .input('pvm', sql.Money, valorVentaBase) // PventaMa
+            .input('pvi', sql.Money, valorVentaBase) // PventaMi (Mismo valor)
+
+            .input('uni', sql.Int, p.Unimed)
+            .input('com', sql.Float, comision)
+
+            // COMISIONES ADICIONALES
+            .input('comH', sql.Decimal(9, 2), comH)
+            .input('comV', sql.Decimal(9, 2), comV)
+            .input('comR', sql.Decimal(9, 2), comR)
+
+            .input('reg', sql.Char(50), p.RegSanit || '')
+            .input('tem', sql.Int, p.TempMax || 0)
+            .input('tmi', sql.Int, p.TemMin || 0)
+            .input('cre', sql.Money, p.CosReal || 0);
 
         if (p.isNew) {
-            await request.query(`INSERT INTO Productos (CodPro, Nombre, CodBar, Clinea, Clase, CodProv, Peso, Minimo, Stock, Afecto, Tipo, Costo, PventaMa, PventaMi, Unimed, Comision, RegSanit, TemMax, TemMin, CosReal, Eliminado) VALUES (@cod, @nom, @bar, @lin, @cla, @pro, @pes, @min, @stk, @afe, @tip, @cos, @pvm, @pvi, @uni, @com, @reg, @tem, @tmi, @cre, 0)`);
+            // Se agregaron ComisionH, ComisionV, ComisionR al INSERT
+            await request.query(`
+                INSERT INTO Productos (CodPro, Nombre, CodBar, Clinea, Clase, CodProv, Peso, Minimo, Stock, Afecto, Tipo, Costo, PventaMa, PventaMi, Unimed, Comision, ComisionH, ComisionV, ComisionR, RegSanit, TemMax, TemMin, CosReal, Eliminado) 
+                VALUES (@cod, @nom, @bar, @lin, @cla, @pro, @pes, @min, @stk, @afe, @tip, @cos, @pvm, @pvi, @uni, @com, @comH, @comV, @comR, @reg, @tem, @tmi, @cre, 0)
+            `);
         } else {
-            await request.query(`UPDATE Productos SET Nombre=@nom, CodBar=@bar, Clinea=@lin, Clase=@cla, CodProv=@pro, Peso=@pes, Minimo=@min, Stock=@stk, Afecto=@afe, Tipo=@tip, Costo=@cos, PventaMa=@pvm, PventaMi=@pvi, Unimed=@uni, Comision=@com, RegSanit=@reg, TemMax=@tem, TemMin=@tmi, CosReal=@cre WHERE CodPro=@cod`);
+            // Se agregaron ComisionH, ComisionV, ComisionR al UPDATE
+            await request.query(`
+                UPDATE Productos SET 
+                Nombre=@nom, CodBar=@bar, Clinea=@lin, Clase=@cla, CodProv=@pro, Peso=@pes, Minimo=@min, Stock=@stk, Afecto=@afe, Tipo=@tip, 
+                Costo=@cos, PventaMa=@pvm, PventaMi=@pvi, Unimed=@uni, Comision=@com, ComisionH=@comH, ComisionV=@comV, ComisionR=@comR, 
+                RegSanit=@reg, TemMax=@tem, TemMin=@tmi, CosReal=@cre 
+                WHERE CodPro=@cod
+            `);
         }
         res.json({ message: 'Guardado' });
-    } catch (e) { res.status(500).send('Error guardando'); }
-});
-
-app.delete('/api/productos/:id', isAuthenticated, async (req, res) => {
-    try { const pool = await getConnection(); await pool.request().input('id', sql.Char(10), req.params.id).query("UPDATE Productos SET Eliminado = 1 WHERE CodPro = @id"); res.json({ message: 'Eliminado' }); } catch (e) { res.status(500).send('Error eliminando'); }
+    } catch (e) { console.error(e); res.status(500).send('Error guardando'); }
 });
 
 // ==========================================
