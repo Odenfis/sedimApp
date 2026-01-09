@@ -462,4 +462,48 @@ app.post('/api/reports/salida-insumos/export', isAuthenticated, async (req, res)
     } catch (e) { res.status(500).send('Error exportando'); }
 });
 
+//SECCION PARA APLICATIVO MÓVIL
+//ESTOS SON SERVICIOS POR AHORA EXPLUSIVOS DE LA APP
+// ==========================================
+//  MÓDULO: GESTIÓN DE CLAVES (ADMIN)
+// ==========================================
+
+// 1. Obtener las claves (Solo tabla 603)
+app.get('/api/admin/claves', isAuthenticated, async (req, res) => {
+    // Verificación de ROL (Opcional pero recomendado en backend)
+    // Asumimos que el rol se llama 'Administrador' o 'Sistemas'
+    // if (req.session.user.rol !== 'Administrador') return res.status(403).send('Acceso denegado');
+
+    try {
+        const pool = await getConnection();
+        // n_codtabla 603 son las claves del sistema
+        const result = await pool.request()
+            .query("SELECT n_numero, c_describe, conversion FROM Tablas WHERE n_codtabla = 603 ORDER BY n_numero");
+        res.json(result.recordset);
+    } catch (e) {
+        console.error(e);
+        res.status(500).send('Error al obtener claves');
+    }
+});
+
+// 2. Actualizar una clave específica
+app.put('/api/admin/claves/:id', isAuthenticated, async (req, res) => {
+    const { id } = req.params; // Esto será el n_numero
+    const { valor } = req.body; // Nuevo valor de 'conversion'
+
+    try {
+        const pool = await getConnection();
+        await pool.request()
+            .input('id', sql.Int, id)
+            .input('val', sql.Float, valor) // Float o Decimal según tu DB, Float suele servir para 1302.00
+            .query("UPDATE Tablas SET conversion = @val WHERE n_codtabla = 603 AND n_numero = @id");
+
+        res.json({ message: 'Clave actualizada' });
+    } catch (e) {
+        console.error(e);
+        res.status(500).send('Error al actualizar');
+    }
+});
+
+
 app.listen(PORT, () => console.log(`Servidor en puerto ${PORT}`));
