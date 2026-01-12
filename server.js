@@ -506,4 +506,153 @@ app.put('/api/admin/claves/:id', isAuthenticated, async (req, res) => {
 });
 
 
+// Endpoint para llenar el combo de Empresas (Cajeros)
+app.get('/api/reports/listas/empresas', isAuthenticated, async (req, res) => {
+    try {
+        const pool = await getConnection();
+        // Consultamos n_codtabla = 200
+        const result = await pool.request().query("SELECT n_numero, c_describe FROM Tablas WHERE n_codtabla = 200 ORDER BY c_describe");
+        res.json(result.recordset);
+    } catch (e) {
+        console.error(e);
+        res.status(500).send('Error cargando empresas');
+    }
+});
+
+
+//nuevo modulo referente a cargo caja reporte
+// ==========================================
+//  MÓDULO: REPORTES (CARGOS DE CAJA) - NUEVO
+// ==========================================
+
+function buildCargosQuery(empresa, year, month, turno, filters) {
+    // Mapeo: '02' -> 2, '04' -> 4, '06' -> 6 (Para el campo Cajero)
+    let cajeroId = parseInt(empresa);
+
+    // Base de la consulta (Replicando la lógica de tu VIEW v_CargosDeCaja)
+    let whereClause = `
+        WHERE (c.Tipo = 1) 
+        AND (c.Eliminado = 0) 
+        AND (c.Razon <> 61) 
+        AND (c.Cajero = ${cajeroId})
+        AND (YEAR(c.Fecha) = @year)
+    `;
+
+    if (month && month !== '0') whereClause += ` AND MONTH(c.Fecha) = ${month}`;
+
+    if (turno && turno !== '0') whereClause += ` AND c.TipoCaja = ${turno}`;
+
+    // Filtros dinámicos por columna
+    if (filters) {
+        if (filters.razon) whereClause += ` AND t1.c_describe LIKE '%${filters.razon}%'`;
+        if (filters.documento) whereClause += ` AND c.Documento LIKE '%${filters.documento}%'`;
+        if (filters.empresa) whereClause += ` AND c.Empresa LIKE '%${filters.empresa}%'`;
+        // Puedes agregar más si es necesario
+    }
+    return whereClause;
+}
+
+// Endpoint: Obtener Datos Cargos Caja
+app.post('/api/reports/cargos-caja', isAuthenticated, async (req, res) => {
+    // Validar Rol (Solo Admin, usa el permiso 'reportes')
+    if (!req.session.user.permisos.includes('reportes')) return res.status(403).json({ message: 'Sin permisos' });
+
+    const { empresa, year, month, turno, filters, page, pageSize } = req.body;
+    const offset = (page - 1) * pageSize;
+
+    try {
+        const pool = await getConnection();
+        const whereClause = buildCargosQuery(empresa, year, month, turno, filters);
+
+        // Query Principal (Datos)
+        const dataQuery = `
+            SELECT 
+                t1.c_describe AS Razon,
+                FORMAT(c.Fecha, 'dd/MM/yyyy HH:mm') as Fecha,
+                c.Documento,
+                c.Empresa AS DetalleEmpresa, -- Columna G del excel
+                c.Monto,
+                t3.c_describe AS Emp,
+                c.TipoCaja AS Turno,
+                YEAR(c.Fecha) AS Anio
+            FROM dbo.Caja AS c 
+            INNER JOIN dbo.Tablas AS t1 ON t1.n_codtabla = 15 AND t1.n_numero = c.Razon 
+            INNER JOIN dbo.Tablas AS t2 ON t2.n_codtabla = 49 AND t2.n_numero = CONVERT(int, t1.conversion) 
+            INNER JOIN dbo.Tablas AS t3 ON t3.n_codtabla = 200 AND t3.n_numero = c.Cajero
+            ${whereClause}
+            ORDER BY c.Fecha DESC
+            OFFSET ${offset} ROWS FETCH NEXT ${pageSize} ROWS ONLY
+        `;
+
+        // Query Totales
+        const totalsQuery = `
+            SELECT 
+                COUNT(*) as TotalRegistros,
+                SUM(c.Monto) as SumMonto
+            FROM dbo.Caja AS c 
+            INNER JOIN dbo.Tablas AS t1 ON t1.n_codtabla = 15 AND t1.n_numero = c.Razon 
+            INNER JOIN dbo.Tablas AS t2 ON t2.n_codtabla = 49 AND t2.n_numero = CONVERT(int, t1.conversion) 
+            INNER JOIN dbo.Tablas AS t3 ON t3.n_codtabla = 200 AND t3.n_numero = c.Cajero
+            ${whereClause}
+        `;
+
+        const dataResult = await pool.request().input('year', sql.Int, year).query(dataQuery);
+        const totalsResult = await pool.request().input('year', sql.Int, year).query(totalsQuery);
+
+        res.json({
+            data: dataResult.recordset,
+            totals: totalsResult.recordset[0]
+        });
+
+    } catch (e) {
+        console.error("Error reporte cargos:", e);
+        res.status(500).json({ message: 'Error generando reporte' });
+    }
+});
+
+// Endpoint: Exportar Excel Cargos Caja
+app.post('/api/reports/cargos-caja/export', isAuthenticated, async (req, res) => {
+    if (!req.session.user.permisos.includes('reportes')) return res.status(403).send('Sin permisos');
+    const { empresa, year, month, turno, filters } = req.body;
+
+    try {
+        const pool = await getConnection();
+        const whereClause = buildCargosQuery(empresa, year, month, turno, filters);
+
+        const query = `
+            SELECT t1.c_describe AS Razon, c.Fecha, c.Documento, c.Empresa AS DetalleEmpresa, c.Monto, t3.c_describe AS Emp, c.TipoCaja AS Turno
+            FROM dbo.Caja AS c 
+            INNER JOIN dbo.Tablas AS t1 ON t1.n_codtabla = 15 AND t1.n_numero = c.Razon 
+            INNER JOIN dbo.Tablas AS t2 ON t2.n_codtabla = 49 AND t2.n_numero = CONVERT(int, t1.conversion) 
+            INNER JOIN dbo.Tablas AS t3 ON t3.n_codtabla = 200 AND t3.n_numero = c.Cajero
+            ${whereClause}
+            ORDER BY c.Fecha DESC
+        `;
+
+        const result = await pool.request().input('year', sql.Int, year).query(query);
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Cargos de Caja');
+
+        worksheet.columns = [
+            { header: 'Razón', key: 'Razon', width: 25 },
+            { header: 'Fecha', key: 'Fecha', width: 20 },
+            { header: 'Documento', key: 'Documento', width: 15 },
+            { header: 'Empresa / Detalle', key: 'DetalleEmpresa', width: 40 },
+            { header: 'Monto', key: 'Monto', width: 15 },
+            { header: 'Sede', key: 'Emp', width: 15 },
+            { header: 'Turno', key: 'Turno', width: 10 },
+        ];
+
+        worksheet.addRows(result.recordset);
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename=Reporte_CargosCaja.xlsx');
+
+        await workbook.xlsx.write(res);
+        res.end();
+
+    } catch (e) { console.error(e); res.status(500).send('Error exportando'); }
+});
+
 app.listen(PORT, () => console.log(`Servidor en puerto ${PORT}`));

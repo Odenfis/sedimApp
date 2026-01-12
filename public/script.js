@@ -14,6 +14,11 @@ let prodPage = 1;
 let GLOBAL_IGV_PCT = 18;
 let GLOBAL_IGVV_PCT = 10;
 
+//variables reporte cargos caja
+let reportCargosPage = 1;
+let reportCargosFilters = {};
+let reportCargosDebounceTimer;
+
 // ==========================================
 //  INICIO
 // ==========================================
@@ -36,6 +41,17 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
     }
 
+    // Llenar select año Cargos Caja
+    const yearSelectC = document.getElementById('repc-anio');
+    if (yearSelectC) {
+        const currentYear = new Date().getFullYear();
+        for (let i = 0; i < 5; i++) {
+            const opt = document.createElement('option');
+            opt.value = currentYear - i; opt.innerText = currentYear - i;
+            yearSelectC.appendChild(opt);
+        }
+    }
+
     try {
         const res = await fetch('/api/session');
         if (!res.ok) window.location.href = '/login.html';
@@ -45,7 +61,10 @@ document.addEventListener("DOMContentLoaded", async () => {
             aplicarPermisos(user.permisos);
             if (user.permisos.includes('equipos')) fetchData();
             if (user.permisos.includes('usuarios')) { loadUsers(); loadRolesSelect(); }
-            if (user.permisos.includes('reportes')) { cargarReporte(1); }
+            if (user.permisos.includes('reportes')) {
+                cargarReporte(1);       // Carga reporte de Insumos (existente)
+                cargarEmpresasReporte(); // NUEVO: Carga el combo y luego el reporte de Cargos
+            }
         }
     } catch (e) { window.location.href = '/login.html'; }
 
@@ -57,6 +76,16 @@ document.addEventListener("DOMContentLoaded", async () => {
             reportDebounceTimer = setTimeout(() => cargarReporte(1), 500);
         });
     });
+
+    // Listener Filtros Cargos Caja
+    document.querySelectorAll('.col-filter-cargos').forEach(input => {
+        input.addEventListener('keyup', (e) => {
+            clearTimeout(reportCargosDebounceTimer);
+            reportCargosFilters[e.target.dataset.col] = e.target.value;
+            reportCargosDebounceTimer = setTimeout(() => cargarReporteCargos(1), 500);
+        });
+    });
+
 });
 
 // ==========================================
@@ -77,6 +106,7 @@ function aplicarPermisos(permisos) {
 }
 
 function showView(viewName) {
+    const views = ['view-equipos', 'view-usuarios', 'view-precios', 'view-revision', 'view-reportes-salida', 'view-reportes-cargos'];
     document.querySelectorAll('.view-section').forEach(el => el.style.display = 'none');
     document.querySelectorAll('.sidebar li').forEach(li => li.classList.remove('active'));
 
@@ -610,5 +640,127 @@ function lockComision() {
     if (input) {
         input.readOnly = true;
         input.style.background = 'var(--input-readonly-bg)'; // Usamos la variable CSS que creamos antes
+    }
+}
+
+// ==========================================
+//  REPORTE: CARGOS DE CAJA
+// ==========================================
+async function cargarReporteCargos(page) {
+    reportCargosPage = page;
+    const empresa = document.getElementById('repc-empresa').value;
+    const year = document.getElementById('repc-anio').value;
+    const month = document.getElementById('repc-mes').value;
+    const turno = document.getElementById('repc-turno').value;
+    const tbody = document.querySelector('#report-cargos-table tbody');
+
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center">Cargando...</td></tr>';
+
+    try {
+        const res = await fetch('/api/reports/cargos-caja', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ empresa, year, month, turno, filters: reportCargosFilters, page, pageSize: 50 })
+        });
+
+        if (!res.ok) throw new Error('Error datos');
+        const { data, totals } = await res.json();
+
+        // Totales
+        document.getElementById('sumc-registros').innerText = totals.TotalRegistros || 0;
+        document.getElementById('sumc-monto').innerText = totals.SumMonto ? totals.SumMonto.toFixed(2) : '0.00';
+
+        // Tabla
+        tbody.innerHTML = '';
+        if (data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center">No hay datos</td></tr>';
+            return;
+        }
+
+        data.forEach(row => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${row.Razon}</td>
+                <td>${row.Fecha}</td>
+                <td>${row.Documento}</td>
+                <td>${row.DetalleEmpresa}</td>
+                <td>${row.Monto ? row.Monto.toFixed(2) : '0.00'}</td>
+                <td>${row.Emp}</td>
+                <td>${row.Turno}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        document.getElementById('page-info-cargos').innerText = `Pág ${page}`;
+
+    } catch (error) {
+        console.error(error);
+        tbody.innerHTML = '<tr><td colspan="7" style="color:red; text-align:center">Error de servidor</td></tr>';
+    }
+}
+
+function cambiarPaginaCargos(delta) {
+    const newPage = reportCargosPage + delta;
+    if (newPage >= 1) cargarReporteCargos(newPage);
+}
+
+function limpiarFiltrosCargos() {
+    reportCargosFilters = {};
+    document.querySelectorAll('.col-filter-cargos').forEach(i => i.value = '');
+    cargarReporteCargos(1);
+}
+
+async function exportarExcelCargos() {
+    const empresa = document.getElementById('repc-empresa').value;
+    const year = document.getElementById('repc-anio').value;
+    const month = document.getElementById('repc-mes').value;
+    const turno = document.getElementById('repc-turno').value;
+
+    const btn = event.currentTarget;
+    const original = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; btn.disabled = true;
+
+    try {
+        const res = await fetch('/api/reports/cargos-caja/export', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ empresa, year, month, turno, filters: reportCargosFilters })
+        });
+        if (res.ok) {
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = `Reporte_Cargos_${empresa}_${year}.xlsx`;
+            document.body.appendChild(a); a.click(); a.remove();
+        } else { alert('Error exportar'); }
+    } catch (e) { alert('Error conexión'); }
+    finally { btn.innerHTML = original; btn.disabled = false; }
+}
+
+async function cargarEmpresasReporte() {
+    const select = document.getElementById('repc-empresa');
+    if (!select) return;
+
+    try {
+        const res = await fetch('/api/reports/listas/empresas');
+        if (res.ok) {
+            const data = await res.json();
+            select.innerHTML = ''; // Limpiar "Cargando..."
+
+            data.forEach(item => {
+                const opt = document.createElement('option');
+                opt.value = item.n_numero; // Esto enviará el ID (ej: 2, 4, 6)
+                opt.innerText = item.c_describe; // Esto mostrará el Nombre
+                select.appendChild(opt);
+            });
+
+            // Una vez cargado el combo, cargamos el reporte por primera vez
+            // Seleccionamos el primero por defecto si hay datos
+            if (data.length > 0) {
+                select.value = data[0].n_numero;
+                cargarReporteCargos(1);
+            }
+        }
+    } catch (e) {
+        console.error("Error cargando empresas", e);
+        select.innerHTML = '<option value="">Error</option>';
     }
 }
