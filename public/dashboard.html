@@ -40,13 +40,23 @@
                 <li onclick="showView('usuarios')" data-module="usuarios">
                     <i class="fas fa-users"></i> <span>Usuarios Sistema</span>
                 </li>
-                <li onclick="showView('precios')" data-module="precios">
-                    <i class="fas fa-tags"></i> <span>Cambio de Precios</span>
+                <!-- NUEVO MENÚ HERRAMIENTAS -->
+                <li class="has-submenu" data-module="herramientas">
+                    <div class="submenu-toggle" onclick="toggleSubmenu(this)">
+                        <div style="display:flex; align-items:center;">
+                            <i class="fas fa-toolbox"></i> <span>Herramientas</span>
+                        </div>
+                        <i class="fas fa-chevron-down arrow-icon"></i>
+                    </div>
+                    <ul class="submenu">
+                        <li onclick="showView('precios')" data-module="precios">
+                            <i class="fas fa-tags"></i> <span>Cambio de Precios</span>
+                        </li>
+                        <li onclick="showView('revision')" data-module="revision">
+                            <i class="fas fa-cloud"></i> <span>Revisión Datos Nube</span>
+                        </li>
+                    </ul>
                 </li>
-                <li onclick="showView('revision')" data-module="revision">
-                    <i class="fas fa-cloud"></i> <span>Revisión Datos Nube</span>
-                </li>
-
                 <li class="has-submenu" data-module="operaciones">
                     <div class="submenu-toggle" onclick="toggleSubmenu(this)">
                         <div style="display:flex; align-items:center;">
