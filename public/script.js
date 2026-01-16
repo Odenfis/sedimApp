@@ -105,24 +105,44 @@ function aplicarPermisos(permisos) {
     });
 }
 
+// ==========================================
+//  NAVEGACIÓN (ACTUALIZADA PARA SUBMENÚS)
+// ==========================================
 function showView(viewName) {
-    const views = ['view-equipos', 'view-usuarios', 'view-precios', 'view-revision', 'view-reportes-salida', 'view-reportes-cargos'];
-    document.querySelectorAll('.view-section').forEach(el => el.style.display = 'none');
+    // 1. Ocultar todas las vistas
+    const views = ['view-equipos', 'view-usuarios', 'view-precios', 'view-revision', 'view-reportes-salida', 'view-reportes-cargos', 'view-prod-almacen'];
+    views.forEach(v => {
+        const el = document.getElementById(v);
+        if (el) el.style.display = 'none';
+    });
+
+    // 2. Resetear 'active' de todos los items del menú (padres e hijos)
     document.querySelectorAll('.sidebar li').forEach(li => li.classList.remove('active'));
 
+    // 3. Mostrar vista deseada
     const target = document.getElementById(`view-${viewName}`);
     if (target) {
         target.style.display = 'block';
-        if (viewName === 'prod-almacen') buscarProductos(); // Auto-carga productos
+
+        // LOGICA ESPECIFICA DE CARGA
+        if (viewName === 'prod-almacen') buscarProductos();
     }
 
+    // 4. Activar visualmente el ítem del menú correspondiente
+    // Buscamos el LI que tiene el onclick exacto que acabamos de llamar
     const activeLink = document.querySelector(`.sidebar li[onclick="showView('${viewName}')"]`);
+
     if (activeLink) {
+        // Activamos el item
         activeLink.classList.add('active');
+
+        // Si el item está dentro de un submenú, abrimos el padre
         const parentUl = activeLink.closest('ul.submenu');
         if (parentUl) {
             parentUl.classList.add('open');
-            const arrow = parentUl.parentElement.querySelector('.arrow-icon');
+            // Rotamos la flecha del padre
+            const parentLi = parentUl.parentElement;
+            const arrow = parentLi.querySelector('.arrow-icon');
             if (arrow) arrow.style.transform = 'rotate(180deg)';
         }
     }
