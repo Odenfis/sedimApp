@@ -68,6 +68,10 @@
                         <li onclick="showView('prod-almacen')">
                             <i class="fas fa-boxes"></i> <span>Productos Almacén</span>
                         </li>
+                        <!-- NUEVO: GESTIÓN RECETAS -->
+                        <li onclick="showView('recetas')">
+                            <i class="fas fa-utensils"></i> <span>Gestión Recetas</span>
+                        </li>
                     </ul>
                 </li>
 
@@ -400,6 +404,111 @@
                     <button onclick="cambiarPaginaCargos(-1)"><i class="fas fa-chevron-left"></i></button>
                     <span id="page-info-cargos">Pág 1</span>
                     <button onclick="cambiarPaginaCargos(1)"><i class="fas fa-chevron-right"></i></button>
+                </div>
+            </div>
+            <!-- VISTA: GESTIÓN DE RECETAS (CORREGIDO) -->
+            <div id="view-recetas" class="view-section" style="display:none;">
+                <header>
+                    <h1>Gestión de Recetas</h1>
+                </header>
+
+                <!-- 1. SELECCIÓN DEL PRODUCTO (PLATO) -->
+                <div class="card-simple"
+                    style="margin-bottom: 20px; padding: 20px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px;">
+                    <h3 style="margin-bottom: 15px; font-size: 1rem; color: var(--text-secondary);">1. Selecciona el
+                        Producto (Plato)</h3>
+
+                    <div style="display: flex; gap: 15px; align-items: center;">
+
+                        <!-- A. Filtro Empresa -->
+                        <div style="width: 200px;">
+                            <select id="rec-filter-empresa" onchange="limpiarBusquedaReceta()" style="width: 100%;">
+                                <option value="02" selected>Cocineria</option>
+                                <option value="04">Mar Picante</option>
+                                <option value="06">Abruzzo</option>
+                            </select>
+                        </div>
+
+                        <!-- B. Buscador -->
+                        <div style="flex: 1; position: relative;">
+                            <input type="text" id="rec-prod-search" placeholder="Buscar producto (Tipo 3)..."
+                                onkeyup="buscarProdReceta(this.value)" autocomplete="off" style="width: 100%;">
+                            <input type="hidden" id="rec-prod-id">
+                            <!-- Lista desplegable de sugerencias -->
+                            <div id="rec-prod-suggestions" class="suggestions-box"></div>
+                        </div>
+
+                        <!-- C. Botón -->
+                        <button class="btn-save" style="background: var(--accent); min-width: 130px;"
+                            onclick="cargarRecetaActual()" id="btn-cargar-receta" disabled>
+                            <i class="fas fa-check"></i> Seleccionar
+                        </button>
+                    </div>
+
+                    <div id="rec-prod-selected-name"
+                        style="margin-top: 10px; font-weight: bold; color: var(--accent); display: none;"></div>
+                </div>
+
+                <!-- 2. AGREGAR INSUMOS (OCULTO HASTA SELECCIONAR PROD) -->
+                <div id="receta-workspace" style="display: none;">
+
+                    <!-- Barra de Agregar Insumo -->
+                    <div class="filters-container"
+                        style="align-items: flex-end; gap: 10px; background: var(--card-bg); padding: 15px; border: 1px solid var(--border-color); border-radius: 8px;">
+
+                        <div style="flex: 2; position: relative; min-width: 250px;">
+                            <label style="font-size: 0.8rem; font-weight: bold; color: var(--text-secondary);">Buscar
+                                Insumo (Tipo 1)</label>
+                            <input type="text" id="rec-ins-search" placeholder="Escribe para buscar insumo..."
+                                onkeyup="buscarInsumoReceta(this.value)" autocomplete="off" style="width: 100%;">
+                            <input type="hidden" id="rec-ins-id">
+                            <input type="hidden" id="rec-ins-unimed-id">
+                            <div id="rec-ins-suggestions" class="suggestions-box"></div>
+                        </div>
+
+                        <div style="flex: 1; min-width: 100px;">
+                            <label
+                                style="font-size: 0.8rem; font-weight: bold; color: var(--text-secondary);">Unidad</label>
+                            <input type="text" id="rec-ins-unimed-name" readonly
+                                style="background: var(--input-readonly-bg); font-size: 0.9rem; font-weight: bold; width: 100%;">
+                        </div>
+
+                        <div style="flex: 1; min-width: 100px;">
+                            <label
+                                style="font-size: 0.8rem; font-weight: bold; color: var(--text-secondary);">Cantidad</label>
+                            <input type="number" id="rec-ins-cant" step="0.01" placeholder="0.00" style="width: 100%;">
+                        </div>
+
+                        <button class="btn-save" onclick="agregarInsumoALista()" style="height: 42px;"><i
+                                class="fas fa-plus"></i> Agregar</button>
+                    </div>
+
+                    <!-- Tabla de Ingredientes -->
+                    <div class="table-container" style="margin-top: 15px;">
+                        <table id="tabla-receta-detalle">
+                            <thead>
+                                <tr>
+                                    <th style="width: 15%;">Código</th>
+                                    <th>Insumo</th>
+                                    <th style="width: 15%;">Unidad</th>
+                                    <th style="width: 15%;">Cantidad</th>
+                                    <th style="width: 10%;">Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                        <div id="receta-empty-msg"
+                            style="padding: 20px; text-align: center; color: var(--text-secondary);">No hay insumos
+                            agregados.</div>
+                    </div>
+
+                    <div style="margin-top: 20px; text-align: right;">
+                        <button class="btn-save" onclick="guardarRecetaDB()"
+                            style="padding: 12px 30px; font-size: 1rem;">
+                            <i class="fas fa-save"></i> GUARDAR RECETA COMPLETA
+                        </button>
+                    </div>
+
                 </div>
             </div>
         </div>

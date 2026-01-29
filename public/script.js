@@ -19,6 +19,10 @@ let reportCargosPage = 1;
 let reportCargosFilters = {};
 let reportCargosDebounceTimer;
 
+// Variables Recetas
+let recetaItems = []; // Array temporal de la receta actual
+let debounceReceta;
+
 // ==========================================
 //  INICIO
 // ==========================================
@@ -109,6 +113,43 @@ function aplicarPermisos(permisos) {
 //  NAVEGACIÓN (ACTUALIZADA PARA SUBMENÚS)
 // ==========================================
 function showView(viewName) {
+    // 1. PASO CRUCIAL: Ocultar TODAS las secciones por su clase CSS
+    // Esto asegura que 'view-recetas' y cualquier futura vista se oculten
+    document.querySelectorAll('.view-section').forEach(el => {
+        el.style.display = 'none';
+    });
+
+    // 2. Resetear 'active' del menú principal
+    document.querySelectorAll('.sidebar li').forEach(li => li.classList.remove('active'));
+
+    // 3. Mostrar la vista deseada
+    const target = document.getElementById(`view-${viewName}`);
+    if (target) {
+        target.style.display = 'block';
+    } else {
+        console.warn(`La vista view-${viewName} no fue encontrada.`);
+    }
+
+    // 4. Activar visualmente el ítem del menú correspondiente
+    // Buscamos el LI específico que llama a esta vista
+    const activeLink = document.querySelector(`.sidebar li[onclick="showView('${viewName}')"]`);
+
+    if (activeLink) {
+        activeLink.classList.add('active');
+
+        // Si el ítem está dentro de un submenú, aseguramos que el padre esté abierto
+        const parentUl = activeLink.closest('ul.submenu');
+        if (parentUl) {
+            parentUl.classList.add('open');
+            // Rotar la flecha del padre si es necesario
+            const parentLi = parentUl.parentElement;
+            const arrow = parentLi.querySelector('.arrow-icon');
+            if (arrow) arrow.style.transform = 'rotate(180deg)';
+        }
+    }
+}
+/*
+function showView(viewName) {
     // 1. Ocultar todas las vistas
     const views = ['view-equipos', 'view-usuarios', 'view-precios', 'view-revision', 'view-reportes-salida', 'view-reportes-cargos', 'view-prod-almacen'];
     views.forEach(v => {
@@ -146,7 +187,7 @@ function showView(viewName) {
             if (arrow) arrow.style.transform = 'rotate(180deg)';
         }
     }
-}
+}*/
 
 function toggleSubmenu(element) {
     const submenu = element.nextElementSibling;
@@ -471,7 +512,21 @@ if (document.getElementById('form-producto')) {
 
 async function eliminarProducto(id) {
     if (!confirm("¿Eliminar este producto?")) return;
-    try { const res = await fetch(`/api/productos/${id}`, { method: 'DELETE' }); if (res.ok) buscarProductos(); else alert("Error"); } catch (e) { console.error(e); }
+    try {
+        // Importante: encodeURIComponent por si el código tiene caracteres raros
+        const res = await fetch(`/api/productos/${encodeURIComponent(id)}`, { method: 'DELETE' });
+
+        if (res.ok) {
+            alert("Producto eliminado correctamente");
+            buscarProductos(); // Recargar la tabla
+        } else {
+            const err = await res.json(); // Intentar leer mensaje del servidor
+            alert("Error: " + (err.message || "No se pudo eliminar"));
+        }
+    } catch (e) {
+        console.error(e);
+        alert("Error de conexión");
+    }
 }
 
 // NUEVA FUNCION: Control de botones Siguiente/Anterior (CORREGIDA)
@@ -782,5 +837,233 @@ async function cargarEmpresasReporte() {
     } catch (e) {
         console.error("Error cargando empresas", e);
         select.innerHTML = '<option value="">Error</option>';
+    }
+}
+
+// ==========================================
+//  MÓDULO: GESTIÓN RECETAS
+// ==========================================
+
+// 1. Buscar Producto Maestro (Tipo 3) - CON FILTRO EMPRESA
+async function buscarProdReceta(texto) {
+    const box = document.getElementById('rec-prod-suggestions');
+    const empresa = document.getElementById('rec-filter-empresa').value; // Obtener empresa
+
+    if (texto.length < 2) { box.style.display = 'none'; return; }
+
+    clearTimeout(debounceReceta);
+    debounceReceta = setTimeout(async () => {
+        try {
+            // Enviamos el parámetro empresa en la URL
+            const res = await fetch(`/api/recetas/productos/buscar?q=${encodeURIComponent(texto)}&empresa=${empresa}`);
+            const data = await res.json();
+
+            box.innerHTML = '';
+            if (data.length > 0) {
+                box.style.display = 'block';
+                data.forEach(p => {
+                    const div = document.createElement('div');
+                    div.className = 'suggestion-item';
+                    div.innerText = `${p.CodPro} - ${p.Nombre}`;
+                    div.onclick = () => seleccionarProductoReceta(p);
+                    box.appendChild(div);
+                });
+            } else {
+                box.style.display = 'none';
+            }
+        } catch (e) { console.error(e); }
+    }, 300);
+}
+
+// Función auxiliar para limpiar si cambia el combo
+function limpiarBusquedaReceta() {
+    document.getElementById('rec-prod-search').value = '';
+    document.getElementById('rec-prod-id').value = '';
+    document.getElementById('rec-prod-suggestions').style.display = 'none';
+    document.getElementById('btn-cargar-receta').disabled = true;
+    document.getElementById('rec-prod-selected-name').style.display = 'none';
+    document.getElementById('receta-workspace').style.display = 'none';
+}
+
+function seleccionarProductoReceta(p) {
+    document.getElementById('rec-prod-search').value = `${p.CodPro} - ${p.Nombre}`;
+    document.getElementById('rec-prod-id').value = p.CodPro;
+    document.getElementById('rec-prod-suggestions').style.display = 'none';
+    document.getElementById('btn-cargar-receta').disabled = false;
+
+    // Resetear vista inferior si cambia producto
+    document.getElementById('receta-workspace').style.display = 'none';
+}
+
+// 2. Cargar Receta Existente
+async function cargarRecetaActual() {
+    const codProd = document.getElementById('rec-prod-id').value;
+    if (!codProd) return;
+
+    // Mostrar workspace
+    document.getElementById('receta-workspace').style.display = 'block';
+
+    // Limpiar array local
+    recetaItems = [];
+
+    try {
+        const res = await fetch(`/api/recetas/${codProd}`);
+        const data = await res.json();
+
+        // Mapear datos BD a nuestro array local
+        data.forEach(row => {
+            recetaItems.push({
+                codInsumo: row.CodInsumo,
+                nombreInsumo: row.InsumoNombre,
+                unimed: row.unimed,
+                nombreUnidad: row.UnidadNombre,
+                cantidad: row.Cantidad
+            });
+        });
+
+        renderTablaReceta();
+    } catch (e) { console.error(e); alert('Error al cargar receta existente'); }
+}
+
+// 3. Buscar Insumo (Tipo 1)
+// 3. Buscar Insumo (Tipo 1) - CON FILTRO EMPRESA
+async function buscarInsumoReceta(texto) {
+    const box = document.getElementById('rec-ins-suggestions');
+    // Obtenemos la empresa seleccionada arriba
+    const empresa = document.getElementById('rec-filter-empresa').value;
+
+    if (texto.length < 2) { box.style.display = 'none'; return; }
+
+    clearTimeout(debounceReceta);
+    debounceReceta = setTimeout(async () => {
+        try {
+            // Enviamos el parámetro empresa
+            const res = await fetch(`/api/recetas/insumos/buscar?q=${encodeURIComponent(texto)}&empresa=${empresa}`);
+            const data = await res.json();
+
+            box.innerHTML = '';
+            if (data.length > 0) {
+                box.style.display = 'block';
+                data.forEach(ins => {
+                    const div = document.createElement('div');
+                    div.className = 'suggestion-item';
+                    div.innerText = `${ins.CodPro} - ${ins.Nombre}`; // Muestro el código para que verifiques
+                    div.onclick = () => seleccionarInsumoReceta(ins);
+                    box.appendChild(div);
+                });
+            } else { box.style.display = 'none'; }
+        } catch (e) { console.error(e); }
+    }, 300);
+}
+
+function seleccionarInsumoReceta(ins) {
+    document.getElementById('rec-ins-search').value = ins.Nombre;
+    document.getElementById('rec-ins-id').value = ins.CodPro;
+    document.getElementById('rec-ins-unimed-id').value = ins.Unimed;
+    document.getElementById('rec-ins-unimed-name').value = ins.UnidadNombre || 'UND';
+    document.getElementById('rec-ins-suggestions').style.display = 'none';
+    document.getElementById('rec-ins-cant').focus();
+}
+
+// 4. Agregar Insumo a la Tabla Local
+function agregarInsumoALista() {
+    const id = document.getElementById('rec-ins-id').value;
+    const nombre = document.getElementById('rec-ins-search').value;
+    const unidId = document.getElementById('rec-ins-unimed-id').value;
+    const unidName = document.getElementById('rec-ins-unimed-name').value;
+    const cant = parseFloat(document.getElementById('rec-ins-cant').value);
+
+    if (!id || !cant || cant <= 0) {
+        alert("Seleccione un insumo y una cantidad válida");
+        return;
+    }
+
+    // Verificar si ya existe para sumar cantidad o avisar
+    const existente = recetaItems.find(i => i.codInsumo === id);
+    if (existente) {
+        if (confirm("El insumo ya está en la receta. ¿Desea actualizar la cantidad?")) {
+            existente.cantidad = cant;
+        }
+    } else {
+        recetaItems.push({
+            codInsumo: id,
+            nombreInsumo: nombre,
+            unimed: parseInt(unidId),
+            nombreUnidad: unidName,
+            cantidad: cant
+        });
+    }
+
+    renderTablaReceta();
+
+    // Limpiar inputs detalle
+    document.getElementById('rec-ins-search').value = '';
+    document.getElementById('rec-ins-id').value = '';
+    document.getElementById('rec-ins-unimed-name').value = '';
+    document.getElementById('rec-ins-cant').value = '';
+}
+
+// 5. Renderizar Tabla
+function renderTablaReceta() {
+    const tbody = document.querySelector('#tabla-receta-detalle tbody');
+    const msg = document.getElementById('receta-empty-msg');
+
+    tbody.innerHTML = '';
+
+    if (recetaItems.length === 0) {
+        msg.style.display = 'block';
+    } else {
+        msg.style.display = 'none';
+
+        recetaItems.forEach((item, index) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${item.codInsumo}</td>
+                <td>${item.nombreInsumo}</td>
+                <td>${item.nombreUnidad}</td>
+                <td>${item.cantidad.toFixed(2)}</td>
+                <td>
+                    <button class="btn-delete btn-sm" onclick="eliminarInsumoReceta(${index})">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+}
+
+function eliminarInsumoReceta(index) {
+    recetaItems.splice(index, 1);
+    renderTablaReceta();
+}
+
+// 6. Guardar Todo en BD
+async function guardarRecetaDB() {
+    const codProd = document.getElementById('rec-prod-id').value;
+
+    if (!codProd) { alert("Error: No hay producto seleccionado"); return; }
+    // Nota: Permitimos guardar receta vacía (sería como borrar la receta)
+
+    if (!confirm("¿Guardar cambios en la receta? Se sobrescribirá la receta anterior.")) return;
+
+    try {
+        const res = await fetch('/api/recetas', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                codProd: codProd,
+                items: recetaItems
+            })
+        });
+
+        if (res.ok) {
+            alert("Receta guardada correctamente");
+        } else {
+            alert("Error al guardar");
+        }
+    } catch (e) {
+        console.error(e);
+        alert("Error de conexión");
     }
 }

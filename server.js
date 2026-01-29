@@ -410,6 +410,29 @@ app.post('/api/productos', isAuthenticated, async (req, res) => {
         res.json({ message: 'Guardado' });
     } catch (e) { console.error(e); res.status(500).send('Error guardando'); }
 });
+// Eliminar Producto (Lógico)
+app.delete('/api/productos/:id', isAuthenticated, async (req, res) => {
+    try {
+        const pool = await getConnection();
+
+        // Ejecutamos el UPDATE
+        const result = await pool.request()
+            .input('id', sql.Char(10), req.params.id)
+            .query("UPDATE Productos SET Eliminado = 1 WHERE CodPro = @id");
+
+        // Verificamos si se actualizó alguna fila
+        if (result.rowsAffected[0] > 0) {
+            res.json({ message: 'Eliminado correctamente' });
+        } else {
+            // Si no encontró el producto o ya estaba eliminado
+            res.status(404).json({ message: 'Producto no encontrado o no se pudo eliminar' });
+        }
+
+    } catch (e) {
+        console.error("Error eliminando producto:", e); // Para depuración
+        res.status(500).send('Error eliminando producto');
+    }
+});
 
 // ==========================================
 //  REPORTES (SALIDA INSUMOS)
@@ -653,6 +676,147 @@ app.post('/api/reports/cargos-caja/export', isAuthenticated, async (req, res) =>
         res.end();
 
     } catch (e) { console.error(e); res.status(500).send('Error exportando'); }
+});
+
+// ==========================================
+//  MÓDULO: GESTIÓN DE RECETAS
+// ==========================================
+
+// Middleware de seguridad para recetas
+const checkRecetas = (req, res, next) => {
+    if (req.session.user && (req.session.user.permisos.includes('recetas') || req.session.user.permisos.includes('operaciones'))) {
+        next();
+    } else {
+        res.status(403).send('Sin permisos de Recetas');
+    }
+};
+
+// 1. Buscar Productos para Recetas (Con filtro de Empresa)
+app.get('/api/recetas/productos/buscar', isAuthenticated, checkRecetas, async (req, res) => {
+    const { q, empresa } = req.query; // Recibimos 'empresa'
+    try {
+        const pool = await getConnection();
+
+        let query = "SELECT TOP 20 CodPro, Nombre FROM Productos WHERE Eliminado = 0 AND Tipo = 3";
+
+        const request = pool.request();
+
+        // Filtro por Empresa (Prefijo)
+        if (empresa) {
+            query += " AND CodPro LIKE @empresa + '%'";
+            request.input('empresa', sql.VarChar, empresa);
+        }
+
+        // Filtro por Texto
+        if (q) {
+            query += " AND (Nombre LIKE @q OR CodPro LIKE @q)";
+            request.input('q', sql.VarChar, `%${q}%`);
+        }
+
+        const result = await request.query(query + " ORDER BY Nombre");
+        res.json(result.recordset);
+    } catch (e) {
+        console.error(e);
+        res.status(500).send('Error buscando productos');
+    }
+});
+
+// 2. Buscar Insumos (Solo Tipo 1 - Para los ingredientes)
+// Nota: Traemos la Unidad de Medida directamente aquí
+// 2. Buscar Insumos (Solo Tipo 1) - CON FILTRO DE EMPRESA ESPECIAL
+app.get('/api/recetas/insumos/buscar', isAuthenticated, checkRecetas, async (req, res) => {
+    const { q, empresa } = req.query; // Recibimos empresa
+    try {
+        const pool = await getConnection();
+        const request = pool.request();
+
+        let query = `
+            SELECT TOP 20 P.CodPro, P.Nombre, P.Unimed, T.c_describe as UnidadNombre
+            FROM Productos P
+            LEFT JOIN Tablas T ON T.n_codtabla = 536 AND T.n_numero = P.Unimed
+            WHERE P.Eliminado = 0 AND P.Tipo = 1
+        `;
+
+        // LÓGICA DE FILTRADO POR EMPRESA
+        if (empresa === '02') {
+            // Caso Cocineria: Insumos 02 o 07
+            query += " AND (P.CodPro LIKE '02%' OR P.CodPro LIKE '07%')";
+        } else if (empresa) {
+            // Casos Mar Picante (04) y Abruzzo (06)
+            query += " AND P.CodPro LIKE @empresa + '%'";
+            request.input('empresa', sql.VarChar, empresa);
+        }
+
+        // Filtro por texto (Nombre o Código)
+        if (q) {
+            query += " AND (P.Nombre LIKE @q OR P.CodPro LIKE @q)";
+            request.input('q', sql.VarChar, `%${q}%`);
+        }
+
+        const result = await request.query(query + " ORDER BY P.Nombre");
+        res.json(result.recordset);
+    } catch (e) {
+        console.error(e);
+        res.status(500).send('Error buscando insumos');
+    }
+});
+
+// 3. Obtener Receta existente de un Producto
+app.get('/api/recetas/:codProd', isAuthenticated, checkRecetas, async (req, res) => {
+    const { codProd } = req.params;
+    try {
+        const pool = await getConnection();
+        // Join para traer nombre del insumo y nombre de la unidad
+        const query = `
+            SELECT R.CodInsumo, P.Nombre as InsumoNombre, R.Cantidad, R.unimed, T.c_describe as UnidadNombre
+            FROM Recetas R
+            INNER JOIN Productos P ON P.CodPro = R.CodInsumo
+            LEFT JOIN Tablas T ON T.n_codtabla = 536 AND T.n_numero = R.unimed
+            WHERE R.codProd = @cod
+        `;
+        const result = await pool.request().input('cod', sql.Char(10), codProd).query(query);
+        res.json(result.recordset);
+    } catch (e) { res.status(500).send('Error cargando receta'); }
+});
+
+// 4. Guardar Receta (Transacción: Borrar anteriores -> Insertar nuevas)
+app.post('/api/recetas', isAuthenticated, checkRecetas, async (req, res) => {
+    const { codProd, items } = req.body; // items es array: [{codInsumo, cantidad, unimed}, ...]
+
+    if (!codProd) return res.status(400).send("Falta código producto");
+
+    const transaction = new sql.Transaction(await getConnection());
+
+    try {
+        await transaction.begin();
+        const request = new sql.Request(transaction);
+
+        // A. Eliminar receta anterior de este producto (Limpieza)
+        await request.input('prod', sql.Char(10), codProd)
+            .query("DELETE FROM Recetas WHERE codProd = @prod");
+
+        // B. Insertar nuevos ingredientes
+        if (items && items.length > 0) {
+            for (const item of items) {
+                const reqItem = new sql.Request(transaction);
+                await reqItem
+                    .input('prod', sql.Char(10), codProd)
+                    .input('ins', sql.Char(10), item.codInsumo)
+                    .input('cant', sql.Decimal(9, 2), item.cantidad)
+                    .input('uni', sql.Int, item.unimed)
+                    .input('cost', sql.Money, 0) // Costo siempre 0 por ahora
+                    .query("INSERT INTO Recetas (codProd, CodInsumo, Cantidad, unimed, Costo) VALUES (@prod, @ins, @cant, @uni, @cost)");
+            }
+        }
+
+        await transaction.commit();
+        res.json({ message: 'Receta guardada correctamente' });
+
+    } catch (e) {
+        if (transaction) await transaction.rollback();
+        console.error(e);
+        res.status(500).send('Error al guardar receta');
+    }
 });
 
 app.listen(PORT, () => console.log(`Servidor en puerto ${PORT}`));
