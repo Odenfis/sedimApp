@@ -345,7 +345,7 @@ app.post('/api/productos', isAuthenticated, async (req, res) => {
         // El frontend nos envía el "Precio Final" en la propiedad PventaMa.
         // Debemos dividirlo entre 1.10 para obtener el Valor de Venta Base.
         const precioFinal = parseFloat(p.PventaMa) || 0;
-        const valorVentaBase = precioFinal / 1.10; // Dividimos entre 1.10 (10%)
+        const valorVentaBase = precioFinal / 1.105; // Dividimos entre 1.10 (10%)
 
         // --- REGLA 2: COMISIONES ---
         const comision = parseFloat(p.Comision) || 0;
