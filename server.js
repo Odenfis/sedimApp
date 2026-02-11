@@ -134,6 +134,118 @@ app.delete('/api/sedes/:id', isAuthenticated, async (req, res) => { try { const 
 //  CAMBIO DE PRECIOS
 // ==========================================
 app.get('/api/precios/:empresa', isAuthenticated, async (req, res) => {
+    const { empresa } = req.params;
+    if (!['02', '04', '06'].includes(empresa)) return res.status(400).json({ message: 'Empresa no válida' });
+
+    try {
+        const pool = await getConnection();
+
+        // 1. Obtener el factor IGVV (Ej: 10.50)
+        const valResult = await pool.request().query("SELECT TOP 1 n_valor FROM Valores WHERE c_valor = 'Igvv'");
+        let igvvPct = 10.00; // Default por seguridad
+        if (valResult.recordset.length > 0) igvvPct = valResult.recordset[0].n_valor;
+
+        // Factor matemático (Ej: 1.105)
+        const factor = 1 + (igvvPct / 100);
+
+        // 2. Consulta principal con cálculo en caliente
+        // Si es Afecto, multiplicamos por el factor. Si no, mostramos tal cual.
+        // Usamos ROUND(x, 4) para visualización precisa.
+        const query = `
+            DECLARE @factor DECIMAL(10, 4) = ${factor};
+            
+            SELECT 
+                p.CodPro, 
+                p.Nombre, 
+                p.Afecto,
+                ROUND(ISNULL(pr.PreTema1, 0) * (CASE WHEN p.Afecto = 1 THEN @factor ELSE 1 END), 4) as PreTema1,
+                ROUND(ISNULL(pr.PreTema2, 0) * (CASE WHEN p.Afecto = 1 THEN @factor ELSE 1 END), 4) as PreTema2,
+                ROUND(ISNULL(pr.PreTema3, 0) * (CASE WHEN p.Afecto = 1 THEN @factor ELSE 1 END), 4) as PreTema3,
+                ROUND(ISNULL(pr.PreTema4, 0) * (CASE WHEN p.Afecto = 1 THEN @factor ELSE 1 END), 4) as PreTema4,
+                ROUND(ISNULL(pr.PreTema5, 0) * (CASE WHEN p.Afecto = 1 THEN @factor ELSE 1 END), 4) as PreTema5,
+                ROUND(ISNULL(pr.PreTema6, 0) * (CASE WHEN p.Afecto = 1 THEN @factor ELSE 1 END), 4) as PreTema6
+            FROM Productos p 
+            LEFT JOIN Precios pr ON p.CodPro = pr.Codpro 
+            WHERE p.Tipo = 3 
+              AND p.CodPro LIKE @prefix + '%' 
+              AND p.Eliminado = 0 
+            ORDER BY p.Nombre ASC
+        `;
+
+        const result = await pool.request().input('prefix', sql.VarChar, empresa).query(query);
+        res.json(result.recordset);
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ message: 'Error BD' });
+    }
+});
+
+app.put('/api/precios/:codpro', isAuthenticated, async (req, res) => {
+    const { codpro } = req.params;
+    // Los precios que llegan aquí (p1...p6) son los que vio el usuario (CON IGVV)
+    const { p1, p2, p3, p4, p5, p6 } = req.body;
+
+    try {
+        const pool = await getConnection();
+
+        // 1. Obtener Factor IGVV y Estado Afecto del Producto
+        const datosPrevios = await pool.request()
+            .input('cod', sql.Char(10), codpro)
+            .query(`
+                SELECT TOP 1 
+                    (SELECT TOP 1 n_valor FROM Valores WHERE c_valor = 'Igvv') as Igvv,
+                    p.Afecto
+                FROM Productos p
+                WHERE p.CodPro = @cod
+            `);
+
+        let factor = 1;
+        if (datosPrevios.recordset.length > 0) {
+            const row = datosPrevios.recordset[0];
+            // Solo aplicamos la división si el producto es Afecto
+            if (row.Afecto) {
+                const igvv = row.Igvv || 10.00;
+                factor = 1 + (igvv / 100);
+            }
+        }
+
+        // 2. Calcular precios BASE (Sin IGVV) para guardar
+        // Dividimos el input del usuario entre el factor
+        const v1 = parseFloat(p1 || 0) / factor;
+        const v2 = parseFloat(p2 || 0) / factor;
+        const v3 = parseFloat(p3 || 0) / factor;
+        const v4 = parseFloat(p4 || 0) / factor;
+        const v5 = parseFloat(p5 || 0) / factor;
+        const v6 = parseFloat(p6 || 0) / factor;
+
+        // 3. Guardar en Base de Datos (Insert o Update)
+        const check = await pool.request().input('cod', sql.Char(10), codpro).query("SELECT Codpro FROM Precios WHERE Codpro = @cod");
+
+        const request = pool.request()
+            .input('cod', sql.Char(10), codpro)
+            // Usamos Decimal(19, 4) para asegurar los 4 decimales pedidos
+            .input('p1', sql.Decimal(19, 4), v1)
+            .input('p2', sql.Decimal(19, 4), v2)
+            .input('p3', sql.Decimal(19, 4), v3)
+            .input('p4', sql.Decimal(19, 4), v4)
+            .input('p5', sql.Decimal(19, 4), v5)
+            .input('p6', sql.Decimal(19, 4), v6);
+
+        if (check.recordset.length === 0) {
+            await request.query(`INSERT INTO Precios (Codpro, PreTema1, PreTema2, PreTema3, PreTema4, PreTema5, PreTema6) VALUES (@cod, @p1, @p2, @p3, @p4, @p5, @p6)`);
+        } else {
+            await request.query(`UPDATE Precios SET PreTema1=@p1, PreTema2=@p2, PreTema3=@p3, PreTema4=@p4, PreTema5=@p5, PreTema6=@p6 WHERE Codpro=@cod`);
+        }
+
+        res.json({ message: 'Ok' });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ message: 'Error' });
+    }
+});
+/*
+endpoint anterior
+app.get('/api/precios/:empresa', isAuthenticated, async (req, res) => {
     const { empresa } = req.params; if (!['02', '04', '06'].includes(empresa)) return res.status(400).json({ message: 'Empresa no válida' });
     try { const pool = await getConnection(); const result = await pool.request().input('prefix', sql.VarChar, empresa).query(`SELECT p.CodPro, p.Nombre, pr.PreTema1, pr.PreTema2, pr.PreTema3, pr.PreTema4, pr.PreTema5, pr.PreTema6 FROM Productos p LEFT JOIN Precios pr ON p.CodPro = pr.Codpro WHERE p.Tipo = 3 AND p.CodPro LIKE @prefix + '%' AND p.Eliminado = 0 ORDER BY p.Nombre ASC`); res.json(result.recordset); } catch (e) { res.status(500).json({ message: 'Error BD' }); }
 });
@@ -145,7 +257,7 @@ app.put('/api/precios/:codpro', isAuthenticated, async (req, res) => {
         else await pool.request().input('cod', sql.Char(10), codpro).input('p1', sql.Money, p1).input('p2', sql.Money, p2).input('p3', sql.Money, p3).input('p4', sql.Money, p4).input('p5', sql.Money, p5).input('p6', sql.Money, p6).query(`UPDATE Precios SET PreTema1=@p1, PreTema2=@p2, PreTema3=@p3, PreTema4=@p4, PreTema5=@p5, PreTema6=@p6 WHERE Codpro=@cod`);
         res.json({ message: 'Ok' });
     } catch (e) { res.status(500).json({ message: 'Error' }); }
-});
+});*/
 
 // ==========================================
 //  REVISIÓN DE DATOS EN LA NUBE (CÓDIGO DE RENDER RESTAURADO)
@@ -341,6 +453,94 @@ app.post('/api/productos', isAuthenticated, async (req, res) => {
     try {
         const pool = await getConnection();
 
+        // --- PASO 1: OBTENER FACTOR IGVV DE LA BD ---
+        // Consultamos el porcentaje actual (Ej: 10.50)
+        const valResult = await pool.request()
+            .query("SELECT TOP 1 n_valor FROM Valores WHERE c_valor = 'Igvv'");
+
+        let igvvPct = 10.50; // Valor de respaldo por seguridad
+        if (valResult.recordset.length > 0) {
+            igvvPct = valResult.recordset[0].n_valor;
+        }
+
+        // Calculamos el factor (Ej: 1 + 10.5/100 = 1.105)
+        const factor = 1 + (igvvPct / 100);
+
+        // --- REGLA 2: CÁLCULO DE PRECIOS ---
+        const precioFinal = parseFloat(p.PventaMa) || 0;
+
+        // Calculamos la base dividiendo por el factor dinámico
+        let valorVentaBase = precioFinal;
+
+        // Solo dividimos si el producto es Afecto al impuesto
+        if (p.Afecto) {
+            valorVentaBase = precioFinal / factor;
+        }
+
+        // --- REGLA 3: COMISIONES ---
+        const comision = parseFloat(p.Comision) || 0;
+        let comH = 0, comV = 0, comR = 0; // Inicializar en 0 por defecto
+
+        // Si hay comisión, replicamos el valor (o 0 si así se requiere)
+        if (comision !== 0) {
+            comH = comision; comV = comision; comR = comision;
+        }
+
+        const request = pool.request()
+            .input('cod', sql.Char(10), p.CodPro)
+            .input('nom', sql.VarChar(70), p.Nombre)
+            .input('bar', sql.Char(15), p.CodBar || '')
+            .input('lin', sql.Int, p.Clinea)
+            .input('cla', sql.Int, p.Clase)
+            .input('pro', sql.Char(4), p.CodProv)
+            .input('pes', sql.Decimal(9, 3), p.Peso || 0)
+            .input('min', sql.Decimal(9, 2), p.Minimo || 0)
+            .input('stk', sql.Decimal(9, 2), p.Stock || 0)
+            .input('afe', sql.Bit, p.Afecto)
+            .input('tip', sql.Int, p.Tipo)
+            .input('cos', sql.Money, p.Costo)
+
+            // USAMOS EL VALOR CALCULADO DINÁMICAMENTE
+            .input('pvm', sql.Money, valorVentaBase)
+            .input('pvi', sql.Money, valorVentaBase)
+
+            .input('uni', sql.Int, p.Unimed)
+            .input('com', sql.Float, comision)
+
+            // COMISIONES
+            .input('comH', sql.Decimal(9, 2), comH)
+            .input('comV', sql.Decimal(9, 2), comV)
+            .input('comR', sql.Decimal(9, 2), comR)
+
+            .input('reg', sql.Char(50), p.RegSanit || '')
+            .input('tem', sql.Int, p.TempMax || 0)
+            .input('tmi', sql.Int, p.TemMin || 0)
+            .input('cre', sql.Money, p.CosReal || 0);
+
+        if (p.isNew) {
+            await request.query(`
+                INSERT INTO Productos (CodPro, Nombre, CodBar, Clinea, Clase, CodProv, Peso, Minimo, Stock, Afecto, Tipo, Costo, PventaMa, PventaMi, Unimed, Comision, ComisionH, ComisionV, ComisionR, RegSanit, TemMax, TemMin, CosReal, Eliminado) 
+                VALUES (@cod, @nom, @bar, @lin, @cla, @pro, @pes, @min, @stk, @afe, @tip, @cos, @pvm, @pvi, @uni, @com, @comH, @comV, @comR, @reg, @tem, @tmi, @cre, 0)
+            `);
+        } else {
+            await request.query(`
+                UPDATE Productos SET 
+                Nombre=@nom, CodBar=@bar, Clinea=@lin, Clase=@cla, CodProv=@pro, Peso=@pes, Minimo=@min, Stock=@stk, Afecto=@afe, Tipo=@tip, 
+                Costo=@cos, PventaMa=@pvm, PventaMi=@pvi, Unimed=@uni, Comision=@com, ComisionH=@comH, ComisionV=@comV, ComisionR=@comR, 
+                RegSanit=@reg, TemMax=@tem, TemMin=@tmi, CosReal=@cre 
+                WHERE CodPro=@cod
+            `);
+        }
+        res.json({ message: 'Guardado' });
+    } catch (e) { console.error(e); res.status(500).send('Error guardando'); }
+});
+/*
+endpoint anterior
+app.post('/api/productos', isAuthenticated, async (req, res) => {
+    const p = req.body;
+    try {
+        const pool = await getConnection();
+
         // --- REGLA 1: CÁLCULO DE PRECIOS ---
         // El frontend nos envía el "Precio Final" en la propiedad PventaMa.
         // Debemos dividirlo entre 1.10 para obtener el Valor de Venta Base.
@@ -409,7 +609,7 @@ app.post('/api/productos', isAuthenticated, async (req, res) => {
         }
         res.json({ message: 'Guardado' });
     } catch (e) { console.error(e); res.status(500).send('Error guardando'); }
-});
+});*/
 // Eliminar Producto (Lógico)
 app.delete('/api/productos/:id', isAuthenticated, async (req, res) => {
     try {
