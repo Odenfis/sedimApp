@@ -36,12 +36,37 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // Año reporte
     const yearSelect = document.getElementById('rep-anio');
+    const audAnioSelect = document.getElementById('aud-anio');
+
     if (yearSelect) {
         const currentYear = new Date().getFullYear();
         for (let i = 0; i < 5; i++) {
             const opt = document.createElement('option');
             opt.value = currentYear - i; opt.innerText = currentYear - i;
             yearSelect.appendChild(opt);
+        }
+    }
+
+    if (audAnioSelect) {
+        const currentYear = new Date().getFullYear();
+        for (let i = 0; i < 5; i++) {
+            const opt = document.createElement('option');
+            opt.value = currentYear - i;
+            opt.innerText = currentYear - i;
+            audAnioSelect.appendChild(opt);
+        }
+    }
+
+    // Llenar combo de empresas para la nueva vista
+    cargarEmpresasAuditoria();
+    // Llenar selector de año para la nueva vista
+    const audDocAnio = document.getElementById('aud-doc-anio');
+    if (audDocAnio) {
+        const currentYear = new Date().getFullYear();
+        for (let i = 0; i < 5; i++) {
+            const opt = document.createElement('option');
+            opt.value = currentYear - i; opt.innerText = currentYear - i;
+            audDocAnio.appendChild(opt);
         }
     }
 
@@ -715,6 +740,141 @@ function lockComision() {
     if (input) {
         input.readOnly = true;
         input.style.background = 'var(--input-readonly-bg)'; // Usamos la variable CSS que creamos antes
+    }
+}
+
+// ==========================================
+//  AUDITORIA: TICKETS NO PAGADOS
+// ==========================================
+async function consultarTicketsNoPagados() {
+    const anio = document.getElementById('aud-anio').value;
+    const tbody = document.querySelector('#aud-tickets-table tbody');
+
+    // UI Loading
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center"><i class="fas fa-spinner fa-spin"></i> Procesando...</td></tr>';
+
+    try {
+        const res = await fetch(`/api/auditoria/tickets-no-pagados/${anio}`);
+        if (!res.ok) throw new Error('Error en servidor');
+
+        const data = await res.json();
+
+        tbody.innerHTML = '';
+        if (data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center">No se encontraron tickets pendientes de pago para este año.</td></tr>';
+            return;
+        }
+
+        data.forEach(row => {
+            const tr = document.createElement('tr');
+            // Formatear fecha
+            const fecha = row.Fecha ? new Date(row.Fecha).toLocaleString() : '---';
+
+            tr.innerHTML = `
+                <td>${fecha}</td>
+                <td><span class="badge-code">${row.NroTicket}</span></td>
+                <td>${row.numero || '---'}</td>
+                <td>${row.Empresa || '---'}</td>
+                <td>${row.turno || '---'}</td>
+                <td style="font-weight:bold; color:var(--red-status)">${parseFloat(row.Total).toFixed(2)}</td>
+                <td><span style="color:var(--red-status)"><i class="fas fa-clock"></i> Pendiente</span></td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+    } catch (e) {
+        console.error(e);
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--red-status)">Error al cargar la auditoría.</td></tr>';
+    }
+}
+
+// Cargar empresas desde n_codtabla = 200
+async function cargarEmpresasAuditoria() {
+    const select = document.getElementById('aud-doc-empresa');
+    if (!select) return;
+    try {
+        const res = await fetch('/api/reports/listas/empresas'); // Reutilizamos endpoint existente
+        const data = await res.json();
+        select.innerHTML = '';
+        data.forEach(item => {
+            const opt = document.createElement('option');
+            opt.value = item.n_numero;
+            opt.innerText = item.c_describe;
+            select.appendChild(opt);
+        });
+    } catch (e) { console.error("Error cargando empresas auditoria", e); }
+}
+
+async function consultarDocSinDetalle() {
+    const emp = document.getElementById('aud-doc-empresa').value;
+    const tur = document.getElementById('aud-doc-turno').value;
+    const anio = document.getElementById('aud-doc-anio').value;
+    const tbody = document.querySelector('#aud-doc-table tbody');
+    const containerCorrige = document.getElementById('container-corrige');
+
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center"><i class="fas fa-spinner fa-spin"></i> Consultando...</td></tr>';
+    containerCorrige.style.display = 'none';
+
+    try {
+        const res = await fetch(`/api/auditoria/doc-sin-detalle?emp=${emp}&tur=${tur}&anio=${anio}`);
+        const data = await res.json();
+
+        tbody.innerHTML = '';
+        if (data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center">No se encontraron documentos sin detalle. Todo está correcto.</td></tr>';
+        } else {
+            data.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${row.Numero}</td>
+                    <td>${new Date(row.Fecha).toLocaleDateString()}</td>
+                    <td>${row.empresa}</td>
+                    <td>${row.turno}</td>
+                    <td>${row.NroPedido}</td>
+                    <td>${parseFloat(row.total).toFixed(2)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+            // Si hay datos, mostramos el botón de corregir
+            containerCorrige.style.display = 'block';
+        }
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="6" style="color:red; text-align:center">Error en consulta</td></tr>';
+    }
+}
+
+async function ejecutarCorrigeCarga() {
+    const emp = document.getElementById('aud-doc-empresa').value;
+    const tur = document.getElementById('aud-doc-turno').value;
+    const anio = document.getElementById('aud-doc-anio').value;
+    const btn = document.getElementById('btn-corregir-carga');
+
+    if (!confirm("¿Está seguro de ejecutar la corrección? Esto insertará los detalles faltantes y cargará transacciones.")) return;
+
+    const originalHTML = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando...';
+    btn.disabled = true;
+
+    try {
+        const res = await fetch('/api/auditoria/corregir-carga', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ emp, tur, anio })
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            alert(data.message);
+            // Volver a consultar para verificar que ya no hay errores
+            consultarDocSinDetalle();
+        } else {
+            alert("Error durante el proceso de corrección.");
+        }
+    } catch (e) {
+        alert("Error de conexión al servidor.");
+    } finally {
+        btn.innerHTML = originalHTML;
+        btn.disabled = false;
     }
 }
 

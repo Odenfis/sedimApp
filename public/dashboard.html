@@ -74,7 +74,24 @@
                         </li>
                     </ul>
                 </li>
-
+                <!-- MÓDULO AUDITORÍA -->
+                <li class="has-submenu" data-module="auditoria">
+                    <div class="submenu-toggle" onclick="toggleSubmenu(this)">
+                        <div style="display:flex; align-items:center;">
+                            <i class="fas fa-shield-halved"></i> <span>Auditoría</span>
+                        </div>
+                        <i class="fas fa-chevron-down arrow-icon"></i>
+                    </div>
+                    <ul class="submenu">
+                        <li onclick="showView('tickets-no-pagados')">
+                            <i class="fas fa-receipt"></i> <span>Tickets No Pagados</span>
+                        </li>
+                        <!-- NUEVA OPCIÓN -->
+                        <li onclick="showView('doc-sin-detalle')">
+                            <i class="fas fa-file-circle-exclamation"></i> <span>Docs Sin Detalle</span>
+                        </li>
+                    </ul>
+                </li>
                 <li class="has-submenu" data-module="reportes">
                     <div class="submenu-toggle" onclick="toggleSubmenu(this)">
                         <div style="display:flex; align-items:center;">
@@ -509,6 +526,109 @@
                         </button>
                     </div>
 
+                </div>
+            </div>
+            <!-- VISTA: TICKETS NO PAGADOS -->
+            <div id="view-tickets-no-pagados" class="view-section" style="display:none;">
+                <header>
+                    <h1>Auditoría: Tickets No Pagados</h1>
+                </header>
+
+                <div class="filters-container">
+                    <div class="filter-mini" style="width: 150px;">
+                        <label>Seleccionar Año</label>
+                        <select id="aud-anio"></select>
+                    </div>
+                    <button class="btn-save" onclick="consultarTicketsNoPagados()"
+                        style="height: 42px; margin-top: 20px;">
+                        <i class="fas fa-sync"></i> Procesar
+                    </button>
+                </div>
+
+                <div class="table-container">
+                    <table id="aud-tickets-table">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Ticket</th>
+                                <th>Doc. Número</th>
+                                <th>Empresa</th>
+                                <th>Turno</th>
+                                <th>Total</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="7" style="text-align:center">Seleccione un año y procese los datos.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <!-- VISTA: DOCUMENTOS SIN DETALLE -->
+            <div id="view-doc-sin-detalle" class="view-section" style="display:none;">
+                <header>
+                    <h1>Auditoría: Documentos Sin Detalle</h1>
+                </header>
+
+                <div class="report-top-bar">
+                    <div class="report-filters-group">
+                        <div class="filter-mini">
+                            <label>Empresa</label>
+                            <select id="aud-doc-empresa">
+                                <option value="">Cargando...</option>
+                            </select>
+                        </div>
+                        <div class="filter-mini" style="width: 120px;">
+                            <label>Turno</label>
+                            <select id="aud-doc-turno">
+                                <option value="1">Turno 1</option>
+                                <option value="2">Turno 2</option>
+                            </select>
+                        </div>
+                        <div class="filter-mini" style="width: 100px;">
+                            <label>Año</label>
+                            <select id="aud-doc-anio"></select>
+                        </div>
+                        <button class="btn-save" onclick="consultarDocSinDetalle()"
+                            style="height: 40px; margin-top: 18px;">
+                            <i class="fas fa-search"></i> Consultar
+                        </button>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table id="aud-doc-table">
+                        <thead>
+                            <tr>
+                                <th>Número</th>
+                                <th>Fecha</th>
+                                <th>Empresa</th>
+                                <th>Turno</th>
+                                <th>Nro Pedido</th>
+                                <th>Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="6" style="text-align:center">Realice una consulta para ver resultados.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- BOTÓN DE CORRECCIÓN (Se muestra solo si hay datos) -->
+                <div id="container-corrige" style="display: none; margin-top: 20px; text-align: right;">
+                    <div
+                        style="background: var(--card-bg); padding: 15px; border: 1px solid var(--red-status); border-radius: 8px; display: inline-block;">
+                        <p style="margin: 0 0 10px 0; color: var(--text-color); font-weight: bold;">Se han detectado
+                            documentos sin detalle.</p>
+                        <button class="btn-delete" id="btn-corregir-carga" onclick="ejecutarCorrigeCarga()"
+                            style="background: var(--accent);">
+                            <i class="fas fa-magic"></i> Ejecutar sp_aud_CorrigeCarga
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
