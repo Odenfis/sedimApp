@@ -125,7 +125,7 @@ function aplicarPermisos(permisos) {
     menuItems.forEach(item => item.style.display = 'none');
 
     // Mapeo manual para asegurar compatibilidad
-    // Si usaste data-module en el HTML anterior, esto funciona directo.
+    // Se usó data-module en el HTML anterior --> esto funciona directo
     // Si no, agregamos un fallback simple por nombres
     const permisosUsuario = permisos || [];
     menuItems.forEach(item => {
@@ -139,7 +139,7 @@ function aplicarPermisos(permisos) {
 // ==========================================
 function showView(viewName) {
     // 1. PASO CRUCIAL: Ocultar TODAS las secciones por su clase CSS
-    // Esto asegura que 'view-recetas' y cualquier futura vista se oculten
+    // Esto asegura que 'view-recetas' y cualquier futura vista se puedan ocultar
     document.querySelectorAll('.view-section').forEach(el => {
         el.style.display = 'none';
     });
@@ -492,7 +492,7 @@ async function abrirModalProducto(codPro) {
         } catch (e) { alert("Error al cargar datos"); return; }
     } else {
         document.getElementById('p-comision').value = "0";
-        lockComision(); // Función helper que crearemos abajo
+        lockComision(); // Función helper que se creo mas abajo
         document.getElementById('modal-producto-title').innerText = "Nuevo Producto";
         form.reset();
         document.getElementById('p-codigo').value = '';
@@ -564,10 +564,9 @@ function cambiarPaginaProducto(delta) {
     }
 }
 
-// ==========================================
+// =============================================
 //  RESTO DE MODULOS (EQUIPOS, PRECIOS, NUBE...)
-// ==========================================
-// (MANTENEMOS EL CÓDIGO EXISTENTE, PEGADO A CONTINUACIÓN PARA QUE ESTÉ COMPLETO)
+// =============================================
 
 async function fetchData() {
     try { const response = await fetch('/api/structure'); if (!response.ok) return; const data = await response.json(); appData = data; renderDashboard(); } catch (error) { console.error(error); }
@@ -610,7 +609,7 @@ function openCompModal(sedeId, compObj) {
         // MODO EDITAR
         currentCompId = compObj.id;
 
-        // Si existe el elemento título, lo actualizamos. Si no, no pasa nada.
+        // Si existe el elemento título, lo actualizamos. Si no, no pasa nada :)
         if (titleEl) titleEl.innerText = "Editar Equipo";
 
         // Llenado de datos (Con validación por si vienen vacíos)

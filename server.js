@@ -259,9 +259,9 @@ app.put('/api/precios/:codpro', isAuthenticated, async (req, res) => {
     } catch (e) { res.status(500).json({ message: 'Error' }); }
 });*/
 
-// ==========================================
+// ==============================================================
 //  REVISIÓN DE DATOS EN LA NUBE (CÓDIGO DE RENDER RESTAURADO)
-// ==========================================
+// ==============================================================
 app.post('/api/revision-nube', isAuthenticated, async (req, res) => {
     const { empresa, turno, fechaInicio, fechaFin } = req.body;
     let idEmpresa, idCajero, prefixTicket;
@@ -273,7 +273,7 @@ app.post('/api/revision-nube', isAuthenticated, async (req, res) => {
     const idTurno = parseInt(turno);
     try {
         const pool = await getConnection();
-        // Consultas idénticas a tu versión de Render
+        // Consultas
         const qDoccab = await pool.request().input('emp', sql.Int, idEmpresa).input('turno', sql.Int, idTurno).input('f1', sql.VarChar, fechaInicio).input('f2', sql.VarChar, fechaFin)
             .query(`SELECT MIN(Numero) as First, MAX(Numero) as Last, COUNT(*) as Total FROM Doccab WHERE Empresa = @emp AND Turno = @turno AND Eliminado = 0 AND CAST(Fecha AS DATE) BETWEEN @f1 AND @f2`);
 
@@ -332,9 +332,9 @@ app.post('/api/validate-password', isAuthenticated, async (req, res) => {
     }
 });
 
-// ==========================================
+// ==============================================
 //  NUEVO: MÓDULO PRODUCTOS ALMACÉN (Operaciones)
-// ==========================================
+// ==============================================
 
 //Middleware o validación de rutas
 const checkOperaciones = (req, res, next) => {
@@ -677,7 +677,7 @@ function buildCargosQuery(empresa, year, month, turno, filters) {
     // Mapeo: '02' -> 2, '04' -> 4, '06' -> 6 (Para el campo Cajero)
     let cajeroId = parseInt(empresa);
 
-    // Base de la consulta (Replicando la lógica de tu VIEW v_CargosDeCaja)
+    // Base de la consulta (Replicando la lógica de VIEW v_CargosDeCaja)
     let whereClause = `
         WHERE (c.Tipo = 1) 
         AND (c.Eliminado = 0) 
@@ -695,7 +695,8 @@ function buildCargosQuery(empresa, year, month, turno, filters) {
         if (filters.razon) whereClause += ` AND t1.c_describe LIKE '%${filters.razon}%'`;
         if (filters.documento) whereClause += ` AND c.Documento LIKE '%${filters.documento}%'`;
         if (filters.empresa) whereClause += ` AND c.Empresa LIKE '%${filters.empresa}%'`;
-        // Puedes agregar más si es necesario
+        // Se puede agregar mas filtros si es necesario
+        //OdenfisNotes
     }
     return whereClause;
 }
