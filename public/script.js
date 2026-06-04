@@ -151,6 +151,7 @@ function showView(viewName) {
     const target = document.getElementById(`view-${viewName}`);
     if (target) {
         target.style.display = 'block';
+        if (viewName === 'cierre-turnos') cargarTurnosControl();
     } else {
         console.warn(`La vista view-${viewName} no fue encontrada.`);
     }
@@ -1225,4 +1226,110 @@ async function guardarRecetaDB() {
         console.error(e);
         alert("Error de conexión");
     }
+}
+
+// --- FUNCIONES CIERRE DE TURNOS ---
+
+async function cargarTurnosControl() {
+    const container = document.getElementById('turnos-container');
+    container.innerHTML = '<div style="text-align:center; width:100%;"><i class="fas fa-spinner fa-spin fa-3x"></i></div>';
+
+    try {
+        const res = await fetch('/api/operaciones/turnos');
+        const data = await res.json();
+
+        container.innerHTML = '';
+        data.forEach(t => {
+            const turnoActual = parseInt(t.conversion);
+            const card = document.createElement('div');
+            card.className = 'status-card';
+            card.style.textAlign = 'center';
+            card.style.justifyContent = 'space-between';
+
+            // Estética según el turno
+            const icon = turnoActual === 1 ? 'fa-sun' : 'fa-moon';
+            const color = turnoActual === 1 ? '#f59e0b' : '#3b82f6';
+            const labelTurno = turnoActual === 1 ? 'PRIMER TURNO' : 'SEGUNDO TURNO';
+
+            card.innerHTML = `
+                <div class="card-header" style="justify-content: center; border:none;">
+                    <span class="table-name" style="font-size: 1.2rem;">${t.c_describe.trim()}</span>
+                </div>
+                <div style="margin: 15px 0;">
+                    <i class="fas ${icon}" style="font-size: 4rem; color: ${color}; transition: 0.3s;"></i>
+                </div>
+                <div class="card-data">
+                    <div style="font-size: 1.5rem; font-weight: 800; color: var(--text-color);">${labelTurno}</div>
+                    <div style="color: var(--text-secondary); font-size: 0.8rem;">CÓDIGO SEDE: ${t.n_numero}</div>
+                </div>
+                <button class="btn-save" onclick="prepararCambioTurno(${t.n_numero}, ${turnoActual})" 
+                        style="margin-top: 20px; width: 100%; background: var(--accent);">
+                    <i class="fas fa-right-left"></i> Cambiar a Turno ${turnoActual === 1 ? '2' : '1'}
+                </button>
+            `;
+            container.appendChild(card);
+        });
+    } catch (e) { container.innerHTML = '<p>Error al cargar turnos</p>'; }
+}
+
+// Variables temporales para el cambio
+let turnoPendiente = { id: null, nuevoValor: null };
+
+function prepararCambioTurno(id, turnoActual) {
+    turnoPendiente.id = id;
+    turnoPendiente.nuevoValor = turnoActual === 1 ? 2 : 1;
+
+    // Reutilizamos el modal de password que ya tienes en el proyecto
+    abrirModalPassword('TURNO');
+}
+
+// MODIFICACIÓN A LA FUNCIÓN EXISTENTE DE VALIDACIÓN EN script.js
+// Busca tu función document.getElementById('form-validate-pass').onsubmit y actualízala:
+
+/* ACTUALIZAR EL ONSUBMIT DEL MODAL DE PASSWORD */
+if (document.getElementById('form-validate-pass')) {
+    document.getElementById('form-validate-pass').onsubmit = async (e) => {
+        e.preventDefault();
+        const tipo = document.getElementById('pass-type').value;
+        const clave = document.getElementById('pass-input').value;
+
+        // Lógica para COMISION (Ya la tienes)
+        if (tipo === 'COMISION') {
+            // ... tu código existente de comisión ...
+        }
+
+        // NUEVA LÓGICA PARA TURNO
+        else if (tipo === 'TURNO') {
+            try {
+                const res = await fetch('/api/operaciones/validar-clave-turno', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: clave })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    closeModal('modal-password');
+                    ejecutarCambioTurno();
+                } else {
+                    alert(data.message);
+                }
+            } catch (err) { alert('Error de validación'); }
+        }
+    };
+}
+
+async function ejecutarCambioTurno() {
+    try {
+        const res = await fetch(`/api/operaciones/turnos/${turnoPendiente.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nuevoTurno: turnoPendiente.nuevoValor })
+        });
+
+        if (res.ok) {
+            alert("Turno actualizado correctamente");
+            cargarTurnosControl(); // Recargar tarjetas
+        }
+    } catch (e) { alert("Error al actualizar"); }
 }

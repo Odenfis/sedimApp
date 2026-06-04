@@ -1010,5 +1010,52 @@ app.post('/api/auditoria/corregir-carga', isAuthenticated, async (req, res) => {
     }
 });
 
+// ==========================================
+//  MÓDULO: CIERRE DE TURNOS
+// ==========================================
+
+// 1. Obtener estados de turnos (Tabla 201)
+app.get('/api/operaciones/turnos', isAuthenticated, async (req, res) => {
+    try {
+        const pool = await getConnection();
+        const result = await pool.request()
+            .query("SELECT n_numero, c_describe, conversion FROM Tablas WHERE n_codtabla = 201 ORDER BY n_numero");
+        res.json(result.recordset);
+    } catch (e) { res.status(500).send('Error turnos'); }
+});
+
+// 2. Validar Clave de Autorización (Desde Tabla Valores)
+app.post('/api/operaciones/validar-clave-turno', isAuthenticated, async (req, res) => {
+    const { password } = req.body;
+    try {
+        const pool = await getConnection();
+        const result = await pool.request()
+            .input('clave', sql.VarChar, 'AutorizaTurnoWeb')
+            .query("SELECT n_valor FROM Valores WHERE c_valor = @clave");
+
+        if (result.recordset.length > 0) {
+            const claveCorrecta = result.recordset[0].n_valor;
+            if (parseFloat(password) === parseFloat(claveCorrecta)) {
+                return res.json({ success: true });
+            }
+        }
+        res.json({ success: false, message: 'Clave de autorización incorrecta' });
+    } catch (e) { res.status(500).send('Error validación'); }
+});
+
+// 3. Actualizar Turno
+app.put('/api/operaciones/turnos/:id', isAuthenticated, async (req, res) => {
+    const { id } = req.params; // n_numero
+    const { nuevoTurno } = req.body; // valor de conversion
+    try {
+        const pool = await getConnection();
+        await pool.request()
+            .input('id', sql.Int, id)
+            .input('turno', sql.Decimal(9, 2), nuevoTurno)
+            .query("UPDATE Tablas SET conversion = @turno WHERE n_codtabla = 201 AND n_numero = @id");
+        res.json({ message: 'Turno actualizado correctamente' });
+    } catch (e) { res.status(500).send('Error al actualizar turno'); }
+});
+
 //-------FINAL
 app.listen(PORT, () => console.log(`Servidor en puerto ${PORT}`));

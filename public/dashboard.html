@@ -68,9 +68,13 @@
                         <li onclick="showView('prod-almacen')">
                             <i class="fas fa-boxes"></i> <span>Productos Almacén</span>
                         </li>
-                        <!-- NUEVO: GESTIÓN RECETAS -->
+                        <!-- ANTIGUO: GESTIÓN RECETAS -->
                         <li onclick="showView('recetas')">
                             <i class="fas fa-utensils"></i> <span>Gestión Recetas</span>
+                        </li>
+                        <!-- NUEVO: CIERRE DE TURNOS -->
+                        <li onclick="showView('cierre-turnos')">
+                            <i class="fas fa-clock-rotate-left"></i> <span>Cierre de Turnos</span>
                         </li>
                     </ul>
                 </li>
@@ -254,6 +258,20 @@
                     <button onclick="cambiarPaginaProducto(1)"><i class="fas fa-chevron-right"></i></button>
                 </div>
             </div>
+
+            <!-- VISTA: CIERRE DE TURNOS -->
+            <div id="view-cierre-turnos" class="view-section" style="display:none;">
+                <header>
+                    <h1>Centro de Control: Cierre de Turnos</h1>
+                    <p style="color: var(--text-secondary);">Gestione el cambio de jornada para cada unidad de negocio.
+                    </p>
+                </header>
+
+                <div id="turnos-container" class="revision-grid">
+                    <!-- Las tarjetas se cargarán aquí dinámicamente -->
+                </div>
+            </div>
+
 
             <div id="view-reportes-salida" class="view-section" style="display:none;">
                 <header>
