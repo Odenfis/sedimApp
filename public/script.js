@@ -1287,6 +1287,7 @@ function prepararCambioTurno(id, turnoActual) {
 // Busca tu función document.getElementById('form-validate-pass').onsubmit y actualízala:
 
 /* ACTUALIZAR EL ONSUBMIT DEL MODAL DE PASSWORD */
+/*
 if (document.getElementById('form-validate-pass')) {
     document.getElementById('form-validate-pass').onsubmit = async (e) => {
         e.preventDefault();
@@ -1315,6 +1316,65 @@ if (document.getElementById('form-validate-pass')) {
                     alert(data.message);
                 }
             } catch (err) { alert('Error de validación'); }
+        }
+    };
+}*/
+/* ==========================================
+   UNIFICACIÓN DE VALIDACIÓN DE CLAVES
+   ========================================== */
+if (document.getElementById('form-validate-pass')) {
+    document.getElementById('form-validate-pass').onsubmit = async (e) => {
+        e.preventDefault();
+
+        const tipo = document.getElementById('pass-type').value; // 'COMISION' o 'TURNO'
+        const clave = document.getElementById('pass-input').value;
+
+        // --- CASO 1: DESBLOQUEAR COMISIÓN EN PRODUCTOS ---
+        if (tipo === 'COMISION') {
+            try {
+                const res = await fetch('/api/validate-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ clave, tipo })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    closeModal('modal-password');
+                    // Acción específica: Desbloquear el input de comisión
+                    const inputCom = document.getElementById('p-comision');
+                    inputCom.readOnly = false;
+                    inputCom.style.background = 'var(--input-bg)';
+                    inputCom.focus();
+                    inputCom.select();
+                } else {
+                    alert(data.message || 'Clave incorrecta');
+                }
+            } catch (error) {
+                alert('Error de conexión al validar comisión');
+            }
+        }
+
+        // --- CASO 2: AUTORIZAR CAMBIO DE TURNO ---
+        else if (tipo === 'TURNO') {
+            try {
+                const res = await fetch('/api/operaciones/validar-clave-turno', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: clave })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    closeModal('modal-password');
+                    // Acción específica: Ejecutar el cambio en la BD
+                    ejecutarCambioTurno();
+                } else {
+                    alert(data.message || 'Clave incorrecta');
+                }
+            } catch (err) {
+                alert('Error de conexión al validar turno');
+            }
         }
     };
 }
