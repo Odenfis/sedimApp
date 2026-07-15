@@ -670,8 +670,142 @@ app.get('/api/reports/listas/empresas', isAuthenticated, async (req, res) => {
 
 //nuevo modulo referente a cargo caja reporte
 // ==========================================
-//  MÓDULO: REPORTES (CARGOS DE CAJA) - NUEVO
+//  MÓDULO: REPORTES -- actualizado a saldo de proveedores al crédito
 // ==========================================
+
+function buildSaldoProveedoresQuery(filters) {
+    let where = " WHERE 1=1 ";
+
+    if (filters.verSaldo === 'pendientes') {
+        where += " AND cp.Saldo <> 0 ";
+    } else if (filters.verSaldo === 'cero') {
+        where += " AND cp.Saldo = 0 ";
+    }
+
+    if (filters.q && filters.q.trim() !== '') {
+        where += " AND (prov.Razon LIKE @q OR cp.Documento LIKE @q) ";
+    }
+
+    if (filters.fInicio && filters.fFin && filters.fInicio !== "" && filters.fFin !== "") {
+        where += " AND cp.FechaF >= @f1 AND cp.FechaF <= @f2 ";
+    }
+
+    return where;
+}
+
+app.post('/api/reports/saldo-proveedores', isAuthenticated, async (req, res) => {
+    const { filters, page, pageSize } = req.body;
+    const offset = (page - 1) * pageSize;
+
+    try {
+        const pool = await getConnection();
+        const request = pool.request();
+
+        request.input('offset', sql.Int, offset);
+        request.input('limit', sql.Int, pageSize);
+
+        if (filters.q && filters.q.trim() !== '') {
+            request.input('q', sql.VarChar, `%${filters.q.trim()}%`);
+        }
+
+        if (filters.fInicio && filters.fFin && filters.fInicio !== "" && filters.fFin !== "") {
+            request.input('f1', sql.VarChar, filters.fInicio);
+            request.input('f2', sql.VarChar, filters.fFin + ' 23:59:59');
+        }
+
+        const whereClause = buildSaldoProveedoresQuery(filters);
+
+        const query = `
+            SELECT 
+                    LTRIM(RTRIM(ISNULL(prov.Razon, cp.CodProv))) AS Proveedor,
+                    LTRIM(RTRIM(cp.Documento)) AS Documento,
+                    LTRIM(RTRIM(ISNULL(tab.c_describe, 'No Definido'))) AS TipoProveedor,
+                    CONVERT(VARCHAR(10), cp.FechaF, 103) AS FechaF_Str, -- Formato dd/mm/yyyy
+                    CONVERT(VARCHAR(10), cp.FechaV, 103) AS FechaV_Str, -- Formato dd/mm/yyyy
+                    cp.FechaP,
+                    cp.Importe,
+                    cp.Saldo,
+                    DATEDIFF(day, cp.FechaV, GETDATE()) AS DiasVencidos
+            FROM dbo.CtaProveedor cp
+            LEFT JOIN dbo.Proveedores prov ON LTRIM(RTRIM(cp.CodProv)) = LTRIM(RTRIM(prov.CodProv))
+            LEFT JOIN dbo.Tablas tab ON tab.n_codtabla = 221 AND tab.n_numero = prov.TipoProv
+            ${whereClause}
+            ORDER BY cp.FechaF DESC
+            OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
+        `;
+
+        const result = await request.query(query);
+        res.json({ data: result.recordset });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ message: "Error en servidor" });
+    }
+});
+
+app.post('/api/reports/saldo-proveedores/export', isAuthenticated, async (req, res) => {
+    const { filters } = req.body;
+    try {
+        const pool = await getConnection();
+        const request = pool.request();
+
+        if (filters.q && filters.q.trim() !== '') {
+            request.input('q', sql.VarChar, `%${filters.q.trim()}%`);
+        }
+
+        if (filters.fInicio && filters.fFin && filters.fInicio !== "" && filters.fFin !== "") {
+            request.input('f1', sql.VarChar, filters.fInicio);
+            request.input('f2', sql.VarChar, filters.fFin + ' 23:59:59');
+        }
+
+        const whereClause = buildSaldoProveedoresQuery(filters);
+
+        const query = `
+            SELECT 
+                LTRIM(RTRIM(ISNULL(prov.Razon, cp.CodProv))) AS Proveedor,
+                LTRIM(RTRIM(cp.Documento)) AS Documento, 
+                LTRIM(RTRIM(ISNULL(tab.c_describe, 'No Definido'))) AS TipoProveedor,
+                cp.FechaF, cp.FechaV, cp.FechaP, cp.Importe, cp.Saldo,
+                DATEDIFF(day, cp.FechaV, GETDATE()) AS DiasVencidos
+            FROM dbo.CtaProveedor cp
+            LEFT JOIN dbo.Proveedores prov ON LTRIM(RTRIM(cp.CodProv)) = LTRIM(RTRIM(prov.CodProv))
+            LEFT JOIN dbo.Tablas tab ON tab.n_codtabla = 221 AND tab.n_numero = prov.TipoProv
+            ${whereClause}
+            ORDER BY cp.FechaF DESC
+        `;
+
+        const result = await request.query(query);
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Saldos');
+
+        worksheet.columns = [
+            { header: 'PROVEEDOR', key: 'Proveedor', width: 40 },
+            { header: 'DOCUMENTO', key: 'Documento', width: 20 },
+            { header: 'TIPO', key: 'TipoProveedor', width: 15 },
+            { header: 'EMISIÓN', key: 'FechaF', width: 12 },
+            { header: 'VENCIMIENTO', key: 'FechaV', width: 12 },
+            { header: 'DÍAS VENC.', key: 'DiasVencidos', width: 10 },
+            { header: 'IMPORTE', key: 'Importe', width: 12 },
+            { header: 'SALDO', key: 'Saldo', width: 12 },
+            { header: 'ESTADO', key: 'Estado', width: 12 }
+        ];
+
+        result.recordset.forEach(row => {
+            worksheet.addRow({
+                ...row,
+                Estado: row.Saldo <= 0 ? 'CANCELADO' : 'PENDIENTE',
+                FechaF: row.FechaF ? new Date(row.FechaF).toLocaleDateString('es-PE') : '',
+                FechaV: row.FechaV ? new Date(row.FechaV).toLocaleDateString('es-PE') : ''
+            });
+        });
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename=ReporteSaldosProv.xlsx');
+        await workbook.xlsx.write(res);
+        res.end();
+    } catch (e) { res.status(500).send('Error exportando'); }
+});
+
+// ---------
 
 function buildCargosQuery(empresa, year, month, turno, filters) {
     // Mapeo: '02' -> 2, '04' -> 4, '06' -> 6 (Para el campo Cajero)

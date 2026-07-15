@@ -111,6 +111,10 @@
                         <li onclick="showView('reportes-cargos')">
                             <i class="fas fa-cash-register"></i> <span>Cargos de Caja</span>
                         </li>
+                        <!-- NUEVO REPORTE CTA PROVEEDORES -->
+                        <li onclick="showView('reportes-saldo-prov')">
+                            <i class="fas fa-file-invoice-dollar"></i> <span>Saldo Proveedores</span>
+                        </li>
                     </ul>
                 </li>
             </ul>
@@ -441,6 +445,68 @@
                     <button onclick="cambiarPaginaCargos(1)"><i class="fas fa-chevron-right"></i></button>
                 </div>
             </div>
+
+            <!-- VISTA: CUENTA DE PROVEEDORES NUEVA 2026 15 DE JULIO -->
+            <div id="view-reportes-saldo-prov" class="view-section" style="display:none;">
+                <header>
+                    <h1>Reporte: Saldo Proveedores</h1>
+                </header>
+
+                <div class="report-top-bar" style="display: flex; align-items: flex-end; gap: 15px; flex-wrap: wrap;">
+                    <div class="filter-mini" style="width: 250px;">
+                        <label>FILTRO DE SALDO</label>
+                        <select id="sp-ver-saldo" onchange="cargarReporteSaldoProv(1)">
+                            <option value="pendientes" selected>Solo Pendientes (Saldo <> 0)</option>
+                            <option value="todos">Todos los movimientos</option>
+                            <option value="cero">Solo Cancelados (Saldo = 0)</option>
+                        </select>
+                    </div>
+                    <div class="filter-mini" style="width: 160px;">
+                        <label>DESDE (Emisión)</label>
+                        <input type="date" id="sp-fecha-inicio" onchange="cargarReporteSaldoProv(1)">
+                    </div>
+                    <div class="filter-mini" style="width: 160px;">
+                        <label>HASTA</label>
+                        <input type="date" id="sp-fecha-fin" onchange="cargarReporteSaldoProv(1)">
+                    </div>
+                    <div class="filter-mini" style="flex: 1; min-width: 250px;">
+                        <label>BUSCAR PROVEEDOR O DOCUMENTO</label>
+                        <input type="text" id="sp-search" placeholder="Razón social o # Doc..."
+                            onkeyup="debounceSaldoProv()">
+                    </div>
+                    <button class="btn-save" onclick="exportarExcelSaldoProv()"
+                        style="height: 42px; background: #10b981;">
+                        <i class="fas fa-file-excel"></i> Exportar
+                    </button>
+                </div>
+
+                <!-- Contenedor con scroll para muchas columnas -->
+                <div class="table-container report-table-container" style="overflow-x: auto; margin-top: 20px;">
+                    <table id="sp-table" style="min-width: 1200px; width: 100%;">
+                        <thead>
+                            <tr>
+                                <th style="width: 25%;">PROVEEDOR</th> <!-- Aquí saldrá la RAZÓN SOCIAL -->
+                                <th style="width: 10%;">DOCUMENTO</th>
+                                <th style="width: 10%;">TIPO PROV.</th>
+                                <th style="width: 10%;">F. EMISIÓN</th>
+                                <th style="width: 10%;">F. VENC.</th>
+                                <th style="width: 10%; text-align: center;">DÍAS VENC.</th>
+                                <th style="width: 10%;">IMPORTE</th>
+                                <th style="width: 10%;">SALDO</th>
+                                <th style="width: 10%; text-align: center;">ESTADO</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+
+                <div class="pagination-controls">
+                    <button onclick="cambiarPaginaSaldoProv(-1)"><i class="fas fa-chevron-left"></i></button>
+                    <span id="sp-page-info" style="font-weight: bold;">Pág 1</span>
+                    <button onclick="cambiarPaginaSaldoProv(1)"><i class="fas fa-chevron-right"></i></button>
+                </div>
+            </div>
+
             <!-- VISTA: GESTIÓN DE RECETAS (CORREGIDO) -->
             <div id="view-recetas" class="view-section" style="display:none;">
                 <header>

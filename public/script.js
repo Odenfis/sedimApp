@@ -23,6 +23,11 @@ let reportCargosDebounceTimer;
 let recetaItems = []; // Array temporal de la receta actual
 let debounceReceta;
 
+//Variables para reporte de CtaProveedores
+let spPage = 1;
+let spDebounceTimer;
+
+
 // ==========================================
 //  INICIO
 // ==========================================
@@ -33,6 +38,13 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const today = new Date().toISOString().split('T')[0];
     document.querySelectorAll('input[type="date"]').forEach(input => input.value = today);
+
+    // CORRECCIÓN: Aplicar fecha de hoy solo a inputs que NO sean del reporte de saldos
+    document.querySelectorAll('input[type="date"]').forEach(input => {
+        if (input.id !== 'sp-fecha-inicio' && input.id !== 'sp-fecha-fin') {
+            input.value = today;
+        }
+    });
 
     // Año reporte
     const yearSelect = document.getElementById('rep-anio');
@@ -138,38 +150,46 @@ function aplicarPermisos(permisos) {
 //  NAVEGACIÓN (ACTUALIZADA PARA SUBMENÚS)
 // ==========================================
 function showView(viewName) {
-    // 1. PASO CRUCIAL: Ocultar TODAS las secciones por su clase CSS
-    // Esto asegura que 'view-recetas' y cualquier futura vista se puedan ocultar
+    // 1. Ocultar todas las secciones
     document.querySelectorAll('.view-section').forEach(el => {
         el.style.display = 'none';
     });
 
-    // 2. Resetear 'active' del menú principal
+    // 2. Resetear 'active' del menú
     document.querySelectorAll('.sidebar li').forEach(li => li.classList.remove('active'));
 
     // 3. Mostrar la vista deseada
     const target = document.getElementById(`view-${viewName}`);
     if (target) {
         target.style.display = 'block';
+
+        // LÓGICA DE CARGA DINÁMICA
+        if (viewName === 'prod-almacen') buscarProductos();
         if (viewName === 'cierre-turnos') cargarTurnosControl();
-    } else {
-        console.warn(`La vista view-${viewName} no fue encontrada.`);
+
+        if (viewName === 'reportes-saldo-prov') {
+            // 1. Forzar limpieza absoluta de los campos al entrar
+            const inputInicio = document.getElementById('sp-fecha-inicio');
+            const inputFin = document.getElementById('sp-fecha-fin');
+            const inputBusqueda = document.getElementById('sp-search');
+
+            if (inputInicio) inputInicio.value = "";
+            if (inputFin) inputFin.value = "";
+            if (inputBusqueda) inputBusqueda.value = "";
+
+            // 2. Cargar reporte (al ir vacíos, el backend traerá todo)
+            cargarReporteSaldoProv(1);
+        }
     }
 
-    // 4. Activar visualmente el ítem del menú correspondiente
-    // Buscamos el LI específico que llama a esta vista
+    // 4. Activar visualmente el ítem
     const activeLink = document.querySelector(`.sidebar li[onclick="showView('${viewName}')"]`);
-
     if (activeLink) {
         activeLink.classList.add('active');
-
-        // Si el ítem está dentro de un submenú, aseguramos que el padre esté abierto
         const parentUl = activeLink.closest('ul.submenu');
         if (parentUl) {
             parentUl.classList.add('open');
-            // Rotar la flecha del padre si es necesario
-            const parentLi = parentUl.parentElement;
-            const arrow = parentLi.querySelector('.arrow-icon');
+            const arrow = parentUl.parentElement.querySelector('.arrow-icon');
             if (arrow) arrow.style.transform = 'rotate(180deg)';
         }
     }
@@ -999,6 +1019,139 @@ async function cargarEmpresasReporte() {
         select.innerHTML = '<option value="">Error</option>';
     }
 }
+
+// --- Actualizacion para reporte de CTAPROVEEDORES
+async function cargarReporteSaldoProv(page) {
+    spPage = page;
+
+    const vSaldo = document.getElementById('sp-ver-saldo').value;
+    const fIni = document.getElementById('sp-fecha-inicio').value;
+    const fFi = document.getElementById('sp-fecha-fin').value;
+    const busqueda = document.getElementById('sp-search').value;
+
+    const tbody = document.querySelector('#sp-table tbody');
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center"><i class="fas fa-spinner fa-spin"></i> Cargando información...</td></tr>';
+
+    try {
+        const res = await fetch('/api/reports/saldo-proveedores', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                filters: { verSaldo: vSaldo, fInicio: fIni, fFin: fFi, q: busqueda },
+                page,
+                pageSize: 50
+            })
+        });
+
+        const result = await res.json();
+        const data = result.data;
+        tbody.innerHTML = '';
+
+        if (!data || data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center">No hay registros para mostrar</td></tr>';
+            return;
+        }
+
+        data.forEach(row => {
+            const tr = document.createElement('tr');
+
+            // Lógica de Estado
+            const isCancelado = row.Saldo <= 0;
+            const estadoHTML = isCancelado
+                ? '<span style="background: var(--green-status); color: white; padding: 3px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: bold;">CANCELADO</span>'
+                : '<span style="color: var(--text-secondary); font-size: 0.7rem; font-weight: bold;">PENDIENTE</span>';
+
+            // Lógica Días Vencidos (Estandarizada)
+            let diasHTML = '-';
+            if (!isCancelado && row.DiasVencidos !== null) {
+                const d = row.DiasVencidos;
+                diasHTML = d > 0
+                    ? `<span style="color: var(--red-status); font-weight: bold;">${d} días venc.</span>`
+                    : `<span style="color: var(--green-status); font-weight: bold;">${Math.abs(d)} días x venc.</span>`;
+            }
+
+            const saldoStyle = row.Saldo < 0 ? 'color: var(--red-status); font-weight: bold;' : 'font-weight: bold;';
+
+            tr.innerHTML = `
+                <td style="font-size: 0.8rem; font-weight: 600; white-space: normal; max-width: 250px;">${row.Proveedor}</td>
+                <td style="font-family: monospace;">${row.Documento}</td>
+                <td><span class="badge-code">${row.TipoProveedor}</span></td>
+                <td>${row.FechaF_Str || '-'}</td> <!-- Ya viene formateado de SQL -->
+                <td>${row.FechaV_Str || '-'}</td> <!-- Ya viene formateado de SQL -->
+                <td style="text-align: center;">${diasHTML}</td>
+                <td style="text-align: right;">${row.Importe.toFixed(2)}</td>
+                <td style="text-align: right; ${saldoStyle}">${row.Saldo.toFixed(2)}</td>
+                <td style="text-align: center;">${estadoHTML}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        document.getElementById('sp-page-info').innerText = `Pág ${page}`;
+
+    } catch (e) {
+        console.error(e);
+        tbody.innerHTML = '<tr><td colspan="9" style="color:red; text-align:center">Error de red o servidor</td></tr>';
+    }
+}
+
+
+function debounceSaldoProv() {
+    clearTimeout(spDebounceTimer);
+    spDebounceTimer = setTimeout(() => cargarReporteSaldoProv(1), 500);
+}
+
+function cambiarPaginaSaldoProv(delta) {
+    const newPage = spPage + delta;
+    if (newPage >= 1) cargarReporteSaldoProv(newPage);
+}
+
+async function exportarExcelSaldoProv() {
+    const filters = {
+        verSaldo: document.getElementById('sp-ver-saldo').value,
+        fInicio: document.getElementById('sp-fecha-inicio').value,
+        fFin: document.getElementById('sp-fecha-fin').value,
+        q: document.getElementById('sp-search').value
+    };
+
+    const btn = event.currentTarget;
+    const original = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+    try {
+        const res = await fetch('/api/reports/saldo-proveedores/export', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filters })
+        });
+
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Saldos_Proveedores_${new Date().getTime()}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+    } catch (e) { alert("Error al exportar"); }
+    finally { btn.innerHTML = original; }
+}
+
+// Actualizar showView para que cargue el reporte al entrar
+// (Modificar dentro de tu función showView existente)
+if (viewName === 'reportes-saldo-prov') {
+    // 1. Limpiar los inputs de fecha visualmente
+    const inputInicio = document.getElementById('sp-fecha-inicio');
+    const inputFin = document.getElementById('sp-fecha-fin');
+
+    if (inputInicio) inputInicio.value = "";
+    if (inputFin) inputFin.value = "";
+
+    // 2. Cargar datos (Como las fechas están vacías, el servidor traerá TODO)
+    cargarReporteSaldoProv(1);
+}
+
+// ----
+
 
 // ==========================================
 //  MÓDULO: GESTIÓN RECETAS
