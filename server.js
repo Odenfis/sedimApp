@@ -1179,16 +1179,18 @@ app.post('/api/operaciones/validar-clave-turno', isAuthenticated, async (req, re
 
 // 3. Actualizar Turno
 app.put('/api/operaciones/turnos/:id', isAuthenticated, async (req, res) => {
-    const { id } = req.params; // n_numero
-    const { nuevoTurno } = req.body; // valor de conversion
+    const { id } = req.params;
+    const { nuevoTurno } = req.body;
     try {
         const pool = await getConnection();
         await pool.request()
-            .input('id', sql.Int, id)
-            .input('turno', sql.Decimal(9, 2), nuevoTurno)
+            .input('id', sql.Int, parseInt(id)) // Forzar entero
+            .input('turno', sql.Decimal(9, 2), parseFloat(nuevoTurno)) // Forzar decimal
             .query("UPDATE Tablas SET conversion = @turno WHERE n_codtabla = 201 AND n_numero = @id");
         res.json({ message: 'Turno actualizado correctamente' });
-    } catch (e) { res.status(500).send('Error al actualizar turno'); }
+    } catch (e) {
+        res.status(500).send(e.message);
+    }
 });
 
 //-------FINAL

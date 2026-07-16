@@ -163,21 +163,18 @@ function showView(viewName) {
     if (target) {
         target.style.display = 'block';
 
-        // LÓGICA DE CARGA DINÁMICA
+        // --- LÓGICA DE CARGA SEGÚN LA VISTA ---
         if (viewName === 'prod-almacen') buscarProductos();
-        if (viewName === 'cierre-turnos') cargarTurnosControl();
+
+        if (viewName === 'cierre-turnos') {
+            cargarTurnosControl();
+        }
 
         if (viewName === 'reportes-saldo-prov') {
-            // 1. Forzar limpieza absoluta de los campos al entrar
-            const inputInicio = document.getElementById('sp-fecha-inicio');
-            const inputFin = document.getElementById('sp-fecha-fin');
-            const inputBusqueda = document.getElementById('sp-search');
-
-            if (inputInicio) inputInicio.value = "";
-            if (inputFin) inputFin.value = "";
-            if (inputBusqueda) inputBusqueda.value = "";
-
-            // 2. Cargar reporte (al ir vacíos, el backend traerá todo)
+            const fInicio = document.getElementById('sp-fecha-inicio');
+            const fFin = document.getElementById('sp-fecha-fin');
+            if (fInicio) fInicio.value = "";
+            if (fFin) fFin.value = "";
             cargarReporteSaldoProv(1);
         }
     }
@@ -194,46 +191,6 @@ function showView(viewName) {
         }
     }
 }
-/*
-function showView(viewName) {
-    // 1. Ocultar todas las vistas
-    const views = ['view-equipos', 'view-usuarios', 'view-precios', 'view-revision', 'view-reportes-salida', 'view-reportes-cargos', 'view-prod-almacen'];
-    views.forEach(v => {
-        const el = document.getElementById(v);
-        if (el) el.style.display = 'none';
-    });
-
-    // 2. Resetear 'active' de todos los items del menú (padres e hijos)
-    document.querySelectorAll('.sidebar li').forEach(li => li.classList.remove('active'));
-
-    // 3. Mostrar vista deseada
-    const target = document.getElementById(`view-${viewName}`);
-    if (target) {
-        target.style.display = 'block';
-
-        // LOGICA ESPECIFICA DE CARGA
-        if (viewName === 'prod-almacen') buscarProductos();
-    }
-
-    // 4. Activar visualmente el ítem del menú correspondiente
-    // Buscamos el LI que tiene el onclick exacto que acabamos de llamar
-    const activeLink = document.querySelector(`.sidebar li[onclick="showView('${viewName}')"]`);
-
-    if (activeLink) {
-        // Activamos el item
-        activeLink.classList.add('active');
-
-        // Si el item está dentro de un submenú, abrimos el padre
-        const parentUl = activeLink.closest('ul.submenu');
-        if (parentUl) {
-            parentUl.classList.add('open');
-            // Rotamos la flecha del padre
-            const parentLi = parentUl.parentElement;
-            const arrow = parentLi.querySelector('.arrow-icon');
-            if (arrow) arrow.style.transform = 'rotate(180deg)';
-        }
-    }
-}*/
 
 function toggleSubmenu(element) {
     const submenu = element.nextElementSibling;
@@ -725,32 +682,36 @@ if (document.getElementById('form-validate-pass')) {
         const tipo = document.getElementById('pass-type').value;
         const clave = document.getElementById('pass-input').value;
 
-        try {
-            const res = await fetch('/api/validate-password', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ clave, tipo })
-            });
-
-            const data = await res.json();
-
-            if (data.success) {
-                closeModal('modal-password');
-
-                // Acciones específicas según qué desbloqueamos
-                if (tipo === 'COMISION') {
+        if (tipo === 'COMISION') {
+            try {
+                const res = await fetch('/api/validate-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ clave, tipo })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    closeModal('modal-password');
                     const inputCom = document.getElementById('p-comision');
                     inputCom.readOnly = false;
-                    inputCom.style.background = 'var(--input-bg)'; // Color normal
+                    inputCom.style.background = 'var(--input-bg)';
                     inputCom.focus();
-                    inputCom.select();
-                }
-            } else {
-                alert(data.message || 'Clave incorrecta');
-            }
-        } catch (error) {
-            console.error(error);
-            alert('Error de conexión');
+                } else { alert(data.message || 'Clave incorrecta'); }
+            } catch (error) { alert('Error de conexión'); }
+        }
+        else if (tipo === 'TURNO') {
+            try {
+                const res = await fetch('/api/operaciones/validar-clave-turno', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: clave })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    closeModal('modal-password');
+                    ejecutarCambioTurno();
+                } else { alert(data.message || 'Clave incorrecta'); }
+            } catch (err) { alert('Error de conexión'); }
         }
     };
 }
@@ -1135,21 +1096,6 @@ async function exportarExcelSaldoProv() {
     } catch (e) { alert("Error al exportar"); }
     finally { btn.innerHTML = original; }
 }
-
-// Actualizar showView para que cargue el reporte al entrar
-// (Modificar dentro de tu función showView existente)
-if (viewName === 'reportes-saldo-prov') {
-    // 1. Limpiar los inputs de fecha visualmente
-    const inputInicio = document.getElementById('sp-fecha-inicio');
-    const inputFin = document.getElementById('sp-fecha-fin');
-
-    if (inputInicio) inputInicio.value = "";
-    if (inputFin) inputFin.value = "";
-
-    // 2. Cargar datos (Como las fechas están vacías, el servidor traerá TODO)
-    cargarReporteSaldoProv(1);
-}
-
 // ----
 
 
