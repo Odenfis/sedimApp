@@ -177,6 +177,10 @@ function showView(viewName) {
             if (fFin) fFin.value = "";
             cargarReporteSaldoProv(1);
         }
+
+        if (viewName === 'cargo-caja-resultado') {
+            cargarComboSedeCargo().then(() => cargarCargoResultado());
+        }
     }
 
     // 4. Activar visualmente el ítem
@@ -1491,4 +1495,287 @@ async function ejecutarCambioTurno() {
             cargarTurnosControl(); // Recargar tarjetas
         }
     } catch (e) { alert("Error al actualizar"); }
+}
+
+// ==========================================
+//  MÓDULO: CARGO CAJA RESULTADO (Dashboard + Matriz Dinamica)
+// ==========================================
+const MESES_CORTO = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+const MESES_LARGO = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+let ccChartMensual = null;
+let ccChartTipos = null;
+
+function fmtMoneda(val) {
+    return 'S/ ' + (parseFloat(val) || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function getCargoResultadoFilters() {
+    return {
+        sede: document.getElementById('cc-sede').value,
+        anio: document.getElementById('cc-anio').value || new Date().getFullYear(),
+        turno: document.getElementById('cc-turno').value,
+        tipoDoc: document.getElementById('cc-tipo-doc').value,
+        fInicio: document.getElementById('cc-fecha-inicio').value,
+        fFin: document.getElementById('cc-fecha-fin').value
+    };
+}
+
+async function cargarComboSedeCargo() {
+    const select = document.getElementById('cc-sede');
+    if (!select) return;
+    select.innerHTML = '<option value="all">Todas</option>';
+    try {
+        const res = await fetch('/api/reports/listas/empresas');
+        if (res.ok) {
+            const data = await res.json();
+            data.forEach(item => {
+                const opt = document.createElement('option');
+                opt.value = item.n_numero;
+                opt.innerText = item.c_describe;
+                select.appendChild(opt);
+            });
+        }
+    } catch (e) {
+        console.error('Error cargando sedes', e);
+    }
+}
+
+function mostrarToast(msg) {
+    const el = document.getElementById('cc-toast');
+    const txt = document.getElementById('cc-toast-msg');
+    if (!el) return;
+    if (txt) txt.innerText = msg || 'Consultando…';
+    el.classList.add('show');
+}
+
+function ocultarToast() {
+    const el = document.getElementById('cc-toast');
+    if (el) el.classList.remove('show');
+}
+
+async function cargarCargoResultado() {
+    const filters = getCargoResultadoFilters();
+    const btn = document.getElementById('cc-btn-consultar');
+    const btnOriginal = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Consultando…';
+    }
+    mostrarToast();
+    try {
+        const res = await fetch('/api/cargos/dashboard', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filters })
+        });
+        if (!res.ok) {
+            alert(res.status === 403 ? 'Sin permisos de Reportes' : 'Error al consultar');
+            return;
+        }
+        const data = await res.json();
+
+        document.getElementById('cc-total').innerText = fmtMoneda(data.kpis.total);
+        document.getElementById('cc-registros').innerText = data.kpis.registros.toLocaleString('es-PE');
+        document.getElementById('cc-total-general').innerText = fmtMoneda(data.totalGeneral);
+
+        renderMatrizCargo(data.matrix, data.porMes);
+        renderChartsCargo(data.porMes, data.matrix);
+    } catch (e) {
+        console.error(e);
+        alert('Error al consultar el dashboard');
+    } finally {
+        ocultarToast();
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = btnOriginal;
+        }
+    }
+}
+
+function renderMatrizCargo(matrix, porMes) {
+    const table = document.getElementById('cc-matriz');
+    const thead = table.querySelector('thead');
+    const tbody = table.querySelector('tbody');
+    if (!table || !tbody) return;
+
+    let head = '<tr><th style="text-align:left; padding:10px; border:1px solid var(--border-color); background:var(--accent); color:#fff;">TIPO DE CARGO</th>';
+    MESES_CORTO.forEach(m => { head += `<th style="padding:10px; border:1px solid var(--border-color); background:var(--accent); color:#fff;">${m}</th>`; });
+    head += '<th style="padding:10px; border:1px solid var(--border-color); background:var(--accent); color:#fff;">TOTAL GENERAL</th></tr>';
+    thead.innerHTML = head;
+
+    if (!matrix || matrix.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="14" style="text-align:center; padding:20px;">No hay datos para los filtros seleccionados</td></tr>';
+        return;
+    }
+
+    let rows = '';
+    let colTotals = new Array(12).fill(0);
+    let grandTotal = 0;
+
+    matrix.forEach(row => {
+        rows += `<tr style="cursor:pointer;">`;
+        rows += `<td style="padding:8px 10px; border:1px solid var(--border-color); font-weight:600;">${row.tipoCargo}</td>`;
+        row.meses.forEach((val, i) => {
+            colTotals[i] += val;
+            rows += `<td onclick="abrirDetalleCargo('${row.tipoCargo.replace(/'/g, "\\'")}', ${i + 1})" style="padding:8px 10px; border:1px solid var(--border-color); text-align:right; font-variant-numeric: tabular-nums;">${val ? fmtMoneda(val) : '-'}</td>`;
+        });
+        grandTotal += row.total;
+        rows += `<td onclick="abrirDetalleCargo('${row.tipoCargo.replace(/'/g, "\\'")}', 0)" style="padding:8px 10px; border:1px solid var(--border-color); text-align:right; font-weight:bold; background:var(--accent-light, rgba(0,0,0,.03));">${fmtMoneda(row.total)}</td>`;
+        rows += '</tr>';
+    });
+
+    let foot = '<tr style="font-weight:bold;">';
+    foot += '<td style="padding:8px 10px; border:1px solid var(--border-color); background:rgba(0,0,0,.05);">TOTAL GENERAL</td>';
+    colTotals.forEach(t => { foot += `<td style="padding:8px 10px; border:1px solid var(--border-color); text-align:right; background:rgba(0,0,0,.05);">${t ? fmtMoneda(t) : '-'}</td>`; });
+    foot += `<td style="padding:8px 10px; border:1px solid var(--border-color); text-align:right; background:rgba(0,0,0,.05);">${fmtMoneda(grandTotal)}</td>`;
+    foot += '</tr>';
+
+    tbody.innerHTML = rows + foot;
+}
+
+function renderChartsCargo(porMes, matrix) {
+    if (typeof Chart === 'undefined') return;
+
+    const ctxM = document.getElementById('cc-chart-mensual');
+    const ctxT = document.getElementById('cc-chart-tipos');
+    if (!ctxM || !ctxT) return;
+
+    if (ccChartMensual) ccChartMensual.destroy();
+    if (ccChartTipos) ccChartTipos.destroy();
+
+    ccChartMensual = new Chart(ctxM, {
+        type: 'bar',
+        data: {
+            labels: MESES_CORTO,
+            datasets: [{ label: 'Monto por mes', data: porMes, backgroundColor: '#2563eb', borderRadius: 4 }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    boxPadding: 8,
+                    padding: 10,
+                    callbacks: {
+                        label: ctx => ` ${ctx.label}: ${fmtMoneda(ctx.parsed.y)}`
+                    }
+                },
+                title: { display: true, text: 'Monto por Mes' }
+            },
+            scales: { y: { beginAtZero: true } }
+        }
+    });
+
+    const top = [...matrix].sort((a, b) => b.total - a.total).slice(0, 8);
+    const paleta = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16'];
+    ccChartTipos = new Chart(ctxT, {
+        type: 'doughnut',
+        data: {
+            labels: top.map(r => r.tipoCargo),
+            datasets: [{ data: top.map(r => r.total), backgroundColor: paleta }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'right',
+                    labels: { boxWidth: 12, boxHeight: 12, padding: 12, usePointStyle: false, font: { size: 11 } }
+                },
+                tooltip: {
+                    boxPadding: 18,
+                    padding: 12,
+                    callbacks: {
+                        label: ctx => ` ${ctx.label}: ${fmtMoneda(ctx.parsed)}`
+                    }
+                },
+                title: { display: true, text: 'Distribución por Tipo de Cargo (Top 8)' }
+            }
+        }
+    });
+}
+
+async function abrirDetalleCargo(tipoCargo, mes) {
+    const mesLabel = mes === 0 ? 'Todo el año' : MESES_LARGO[mes - 1];
+    document.getElementById('cc-detalle-titulo').innerText = `${tipoCargo} — ${mesLabel}`;
+    document.getElementById('modal-cargo-detalle').style.display = 'block';
+
+    const tR = document.querySelector('#cc-detalle-razones tbody');
+    const tD = document.querySelector('#cc-detalle-registros tbody');
+    tR.innerHTML = '<tr><td colspan="3" style="text-align:center"><i class="fas fa-spinner fa-spin"></i> Cargando...</td></tr>';
+    tD.innerHTML = '<tr><td colspan="8" style="text-align:center"><i class="fas fa-spinner fa-spin"></i> Cargando...</td></tr>';
+
+    try {
+        const res = await fetch('/api/cargos/detalle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tipoCargo, mes, filters: getCargoResultadoFilters() })
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+
+        tR.innerHTML = '';
+        if (data.razones.length === 0) {
+            tR.innerHTML = '<tr><td colspan="3" style="text-align:center">Sin datos</td></tr>';
+        } else {
+            data.razones.forEach(r => {
+                tR.innerHTML += `<tr>
+                    <td style="padding:8px; border:1px solid var(--border-color);">${r.razon}</td>
+                    <td style="padding:8px; border:1px solid var(--border-color); text-align:right; font-weight:bold;">${fmtMoneda(r.monto)}</td>
+                    <td style="padding:8px; border:1px solid var(--border-color); text-align:center;">${r.n}</td>
+                </tr>`;
+            });
+        }
+
+        tD.innerHTML = '';
+        if (data.registros.length === 0) {
+            tD.innerHTML = '<tr><td colspan="8" style="text-align:center">Sin registros</td></tr>';
+        } else {
+            data.registros.forEach(r => {
+                tD.innerHTML += `<tr>
+                    <td style="padding:8px; border:1px solid var(--border-color); font-family:monospace;">${r.Documento}</td>
+                    <td style="padding:8px; border:1px solid var(--border-color);">${r.tipoDoc}</td>
+                    <td style="padding:8px; border:1px solid var(--border-color);">${r.fecha}</td>
+                    <td style="padding:8px; border:1px solid var(--border-color);">${r.razon}</td>
+                    <td style="padding:8px; border:1px solid var(--border-color);">${r.destinatario}</td>
+                    <td style="padding:8px; border:1px solid var(--border-color);">${r.empresa}</td>
+                    <td style="padding:8px; border:1px solid var(--border-color);">${r.emp}</td>
+                    <td style="padding:8px; border:1px solid var(--border-color); text-align:right; font-weight:bold;">${fmtMoneda(r.Monto)}</td>
+                </tr>`;
+            });
+        }
+    } catch (e) {
+        console.error(e);
+        tR.innerHTML = '<tr><td colspan="3" style="color:red; text-align:center">Error</td></tr>';
+        tD.innerHTML = '<tr><td colspan="8" style="color:red; text-align:center">Error</td></tr>';
+    }
+}
+
+async function exportarCargoResultado() {
+    const btn = event.currentTarget;
+    const original = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+    try {
+        const res = await fetch('/api/cargos/export', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filters: getCargoResultadoFilters() })
+        });
+        if (!res.ok) { alert('Error al exportar'); return; }
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'CargoCajaResultado.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+    } catch (e) {
+        console.error(e);
+        alert('Error al exportar');
+    } finally {
+        btn.innerHTML = original;
+    }
 }

@@ -1193,5 +1193,181 @@ app.put('/api/operaciones/turnos/:id', isAuthenticated, async (req, res) => {
     }
 });
 
+// ==============================================================
+//  MÓDULO: CARGO CAJA RESULTADO (Dashboard + Matriz tipo Dinamica)
+// ==============================================================
+
+// Replica del CASE de la vista v_CargosDeCaja para el TipoDoc
+function tipoDocCase() {
+    return `CASE
+        WHEN LEFT(c.Documento, 2) = 'D0' THEN 'Mov Interno'
+        WHEN LEFT(c.Documento, 2) = 'N0' THEN 'Nota Venta'
+        WHEN LEFT(c.Documento, 2) = 'NI' THEN 'Nota Ingreso'
+        WHEN LEFT(c.Documento, 2) = 'NP' THEN 'Nota Pedido'
+        ELSE 'Factura'
+    END`;
+}
+
+// Construye el WHERE comun del reporte (misma logica de v_CargosDeCaja)
+function buildCargoResultadoWhere(f) {
+    let where = ` WHERE (c.Tipo = 1) AND (c.Eliminado = 0) AND (c.Razon <> 61)`;
+
+    if (f.anio) where += ` AND YEAR(c.Fecha) = ${parseInt(f.anio)}`;
+    if (f.sede && f.sede !== 'all') where += ` AND c.Cajero = ${parseInt(f.sede)}`;
+    if (f.turno && f.turno !== '0' && f.turno !== '') where += ` AND c.TipoCaja = ${parseInt(f.turno)}`;
+    if (f.tipoDoc && f.tipoDoc !== '') where += ` AND ${tipoDocCase()} = @tipoDoc`;
+    if (f.fInicio && f.fInicio !== '') where += ` AND CAST(c.Fecha AS DATE) >= @fInicio`;
+    if (f.fFin && f.fFin !== '') where += ` AND CAST(c.Fecha AS DATE) <= @fFin`;
+    return where;
+}
+
+// Bind de parametros de filtro (evita inyeccion SQL)
+function bindCargoResultadoParams(request, f) {
+    if (f.tipoDoc && f.tipoDoc !== '') request.input('tipoDoc', sql.VarChar, f.tipoDoc);
+    if (f.fInicio && f.fInicio !== '') request.input('fInicio', sql.VarChar, f.fInicio);
+    if (f.fFin && f.fFin !== '') request.input('fFin', sql.VarChar, f.fFin);
+    return request;
+}
+
+const CARGO_BASE_JOINS = `
+    FROM dbo.Caja AS c
+    INNER JOIN dbo.Tablas AS t1 ON t1.n_codtabla = 15 AND t1.n_numero = c.Razon
+    INNER JOIN dbo.Tablas AS t2 ON t2.n_codtabla = 49 AND t2.n_numero = CONVERT(int, t1.conversion)
+    INNER JOIN dbo.Tablas AS t3 ON t3.n_codtabla = 200 AND t3.n_numero = c.Cajero`;
+
+// 1. Dashboard: KPIs + Matriz (TipoCargo x Mes) + totales
+app.post('/api/cargos/dashboard', isAuthenticated, async (req, res) => {
+    if (!req.session.user.permisos.includes('reportes')) return res.status(403).json({ message: 'Sin permisos' });
+    const f = req.body.filters || {};
+    try {
+        const pool = await getConnection();
+        const where = buildCargoResultadoWhere(f);
+
+        // KPIs y total general
+        const kpis = await bindCargoResultadoParams(pool.request(), f)
+            .query(`SELECT COUNT(*) AS n, SUM(c.Monto) AS total ${CARGO_BASE_JOINS} ${where}`);
+
+        // Totales por mes (para KPI de evolucion)
+        const porMes = await bindCargoResultadoParams(pool.request(), f)
+            .query(`SELECT MONTH(c.Fecha) AS mes, SUM(c.Monto) AS total, COUNT(*) AS n ${CARGO_BASE_JOINS} ${where} GROUP BY MONTH(c.Fecha)`);
+
+        // Matriz: TipoCargo x Mes
+        const matrix = await bindCargoResultadoParams(pool.request(), f)
+            .query(`SELECT t2.c_describe AS tipoCargo, MONTH(c.Fecha) AS mes, SUM(c.Monto) AS monto ${CARGO_BASE_JOINS} ${where} GROUP BY t2.c_describe, MONTH(c.Fecha) ORDER BY t2.c_describe`);
+
+        // Nombres de TipoCargo presentes en el periodo
+        const categorias = await bindCargoResultadoParams(pool.request(), f)
+            .query(`SELECT DISTINCT t2.c_describe AS tipoCargo ${CARGO_BASE_JOINS} ${where} ORDER BY tipoCargo`);
+
+        const mesesArr = new Array(12).fill(0);
+        const kpiRow = kpis.recordset[0] || { n: 0, total: 0 };
+        porMes.recordset.forEach(r => { if (r.mes >= 1 && r.mes <= 12) mesesArr[r.mes - 1] = r.total; });
+
+        const filas = categorias.recordset.map(row => {
+            const celda = new Array(12).fill(0);
+            let total = 0;
+            matrix.recordset.forEach(m => {
+                if (m.tipoCargo === row.tipoCargo && m.mes >= 1 && m.mes <= 12) {
+                    celda[m.mes - 1] = m.monto;
+                    total += m.monto;
+                }
+            });
+            return { tipoCargo: row.tipoCargo, meses: celda, total: total };
+        });
+
+        res.json({
+            kpis: { total: kpiRow.total || 0, registros: kpiRow.n || 0 },
+            porMes: mesesArr,
+            matrix: filas,
+            totalGeneral: filas.reduce((acc, r) => acc + r.total, 0)
+        });
+    } catch (e) {
+        console.error('Error dashboard cargos:', e);
+        res.status(500).json({ message: 'Error generando dashboard' });
+    }
+});
+
+// 2. Detalle (drill-down estilo FICO): Razones de un TipoCargo + mes
+app.post('/api/cargos/detalle', isAuthenticated, async (req, res) => {
+    if (!req.session.user.permisos.includes('reportes')) return res.status(403).json({ message: 'Sin permisos' });
+    const { tipoCargo, mes, filters } = req.body;
+    if (!tipoCargo || !mes) return res.status(400).json({ message: 'Faltan parámetros' });
+
+    const f = Object.assign({}, filters || {}, { mes: 0, anio: filters && filters.anio ? filters.anio : new Date().getFullYear() });
+    try {
+        const pool = await getConnection();
+        let where = buildCargoResultadoWhere(f) + ` AND t2.c_describe = @tipoCargo`;
+        if (parseInt(mes) > 0) where += ` AND MONTH(c.Fecha) = @mes`;
+
+const razonesQuery = bindCargoResultadoParams(pool.request(), f)
+    .input('tipoCargo', sql.VarChar, tipoCargo)
+    .input('mes', sql.Int, parseInt(mes) > 0 ? parseInt(mes) : 0)
+    .query(`SELECT t1.c_describe AS razon, SUM(c.Monto) AS monto, COUNT(*) AS n ${CARGO_BASE_JOINS} ${where} GROUP BY t1.c_describe ORDER BY monto DESC`);
+
+const registrosQuery = bindCargoResultadoParams(pool.request(), f)
+    .input('tipoCargo', sql.VarChar, tipoCargo)
+    .input('mes', sql.Int, parseInt(mes) > 0 ? parseInt(mes) : 0)
+    .query(`SELECT TOP 500 c.Documento, ${tipoDocCase()} AS tipoDoc, t1.c_describe AS razon, FORMAT(c.Fecha, 'dd/MM/yyyy HH:mm') AS fecha, LTRIM(RTRIM(ISNULL(c.Destinatario, ''))) AS destinatario, LTRIM(RTRIM(ISNULL(c.Empresa, ''))) AS empresa, t3.c_describe AS emp, c.Monto ${CARGO_BASE_JOINS} ${where} ORDER BY c.Fecha DESC`);
+
+const [razonesRes, registrosRes] = await Promise.all([razonesQuery, registrosQuery]);
+
+res.json({ razones: razonesRes.recordset, registros: registrosRes.recordset });
+    } catch (e) {
+        console.error('Error detalle cargos:', e);
+        res.status(500).json({ message: 'Error generando detalle' });
+    }
+});
+
+// 3. Exportar Matriz a Excel (misma forma que la hoja Dinamica)
+app.post('/api/cargos/export', isAuthenticated, async (req, res) => {
+    if (!req.session.user.permisos.includes('reportes')) return res.status(403).send('Sin permisos');
+    const f = req.body.filters || {};
+    try {
+        const pool = await getConnection();
+        const where = buildCargoResultadoWhere(f);
+
+        const matrix = await bindCargoResultadoParams(pool.request(), f)
+            .query(`SELECT t2.c_describe AS tipoCargo, MONTH(c.Fecha) AS mes, SUM(c.Monto) AS monto ${CARGO_BASE_JOINS} ${where} GROUP BY t2.c_describe, MONTH(c.Fecha) ORDER BY t2.c_describe`);
+
+        const categorias = await bindCargoResultadoParams(pool.request(), f)
+            .query(`SELECT DISTINCT t2.c_describe AS tipoCargo ${CARGO_BASE_JOINS} ${where} ORDER BY tipoCargo`);
+
+        const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+        const filas = categorias.recordset.map(row => {
+            const celda = new Array(12).fill(0);
+            let total = 0;
+            matrix.recordset.forEach(m => {
+                if (m.tipoCargo === row.tipoCargo && m.mes >= 1 && m.mes <= 12) {
+                    celda[m.mes - 1] = m.monto;
+                    total += m.monto;
+                }
+            });
+            return { tipoCargo: row.tipoCargo, meses: celda, total: total };
+        });
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Cargo Caja Resultado');
+        worksheet.columns = [{ header: 'Tipo de Cargo', key: 'tipoCargo', width: 30 }, ...MESES.map(m => ({ header: m, key: m.toLowerCase(), width: 14 })), { header: 'Total general', key: 'total', width: 16 }];
+        filas.forEach(row => {
+            const fila = { tipoCargo: row.tipoCargo };
+            MESES.forEach((m, i) => fila[m.toLowerCase()] = row.meses[i]);
+            fila.total = row.total;
+            worksheet.addRow(fila);
+        });
+        const totalRow = { tipoCargo: 'Total general', total: filas.reduce((a, r) => a + r.total, 0) };
+        MESES.forEach((m, i) => totalRow[m.toLowerCase()] = filas.reduce((a, r) => a + r.meses[i], 0));
+        worksheet.addRow(totalRow);
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename=CargoCajaResultado.xlsx');
+        await workbook.xlsx.write(res);
+        res.end();
+    } catch (e) {
+        console.error('Error export cargos:', e);
+        res.status(500).send('Error exportando');
+    }
+});
+
 //-------FINAL
 app.listen(PORT, () => console.log(`Servidor en puerto ${PORT}`));

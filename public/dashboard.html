@@ -7,6 +7,7 @@
     <title>Panel de Control - Sedimcorp</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 
 <body>
@@ -114,6 +115,10 @@
                         <!-- NUEVO REPORTE CTA PROVEEDORES -->
                         <li onclick="showView('reportes-saldo-prov')">
                             <i class="fas fa-file-invoice-dollar"></i> <span>Saldo Proveedores</span>
+                        </li>
+                        <!-- NUEVO REPORTE: CARGO CAJA RESULTADO -->
+                        <li onclick="showView('cargo-caja-resultado')" data-module="reportes">
+                            <i class="fas fa-chart-pie"></i> <span>Cargo Caja Resultado</span>
                         </li>
                     </ul>
                 </li>
@@ -507,6 +512,105 @@
                 </div>
             </div>
 
+            <!-- VISTA: CARGO CAJA RESULTADO (Dashboard + Matriz Dinamica) -->
+            <div id="view-cargo-caja-resultado" class="view-section" style="display:none;">
+                <header>
+                    <h1>Cargo Caja Resultado</h1>
+                </header>
+
+                <!-- FILTROS -->
+                <div class="report-top-bar">
+                    <div class="report-filters-group">
+                        <div class="filter-mini" style="width: 200px;">
+                            <label>SEDE / EMPRESA</label>
+                            <select id="cc-sede">
+                                <option value="all">Todas</option>
+                            </select>
+                        </div>
+                        <div class="filter-mini" style="width: 120px;">
+                            <label>AÑO</label>
+                            <input type="number" id="cc-anio" value="2025" min="2020" max="2035">
+                        </div>
+                        <div class="filter-mini" style="width: 140px;">
+                            <label>TURNO</label>
+                            <select id="cc-turno">
+                                <option value="0">Todos</option>
+                                <option value="1">Turno 1</option>
+                                <option value="2">Turno 2</option>
+                                <option value="3">Turno 3</option>
+                            </select>
+                        </div>
+                        <div class="filter-mini" style="width: 160px;">
+                            <label>TIPO DOC</label>
+                            <select id="cc-tipo-doc">
+                                <option value="">Todos</option>
+                                <option value="Factura">Factura</option>
+                                <option value="Mov Interno">Mov Interno</option>
+                                <option value="Nota Venta">Nota Venta</option>
+                                <option value="Nota Ingreso">Nota Ingreso</option>
+                                <option value="Nota Pedido">Nota Pedido</option>
+                            </select>
+                        </div>
+                        <div class="filter-mini" style="width: 160px;">
+                            <label>DESDE</label>
+                            <input type="date" id="cc-fecha-inicio">
+                        </div>
+                        <div class="filter-mini" style="width: 160px;">
+                            <label>HASTA</label>
+                            <input type="date" id="cc-fecha-fin">
+                        </div>
+                    </div>
+                    <div class="report-filters-group">
+                        <button class="btn-save" id="cc-btn-consultar" onclick="cargarCargoResultado()" style="height: 42px;">
+                            <i class="fas fa-search"></i> Consultar
+                        </button>
+                        <button class="btn-save" onclick="exportarCargoResultado()"
+                            style="height: 42px; background: #10b981;">
+                            <i class="fas fa-file-excel"></i> Exportar
+                        </button>
+                    </div>
+                </div>
+
+                <!-- KPIs -->
+                <div class="kpi-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                    <div class="kpi-card" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 18px;">
+                        <div style="font-size: .8rem; color: var(--text-secondary);">MONTO TOTAL</div>
+                        <div id="cc-total" style="font-size: 1.6rem; font-weight: bold; margin-top: 5px; color: var(--accent);">S/ 0.00</div>
+                    </div>
+                    <div class="kpi-card" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 18px;">
+                        <div style="font-size: .8rem; color: var(--text-secondary);">N° MOVIMIENTOS</div>
+                        <div id="cc-registros" style="font-size: 1.6rem; font-weight: bold; margin-top: 5px;">0</div>
+                    </div>
+                    <div class="kpi-card" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 18px;">
+                        <div style="font-size: .8rem; color: var(--text-secondary);">TOTAL GENERAL (MATRIZ)</div>
+                        <div id="cc-total-general" style="font-size: 1.6rem; font-weight: bold; margin-top: 5px; color: var(--green-status);">S/ 0.00</div>
+                    </div>
+                </div>
+
+                <!-- GRAFICAS -->
+                <div class="charts-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                    <div class="card-simple" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 15px;">
+                        <canvas id="cc-chart-mensual" height="110"></canvas>
+                    </div>
+                    <div class="card-simple" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 15px;">
+                        <canvas id="cc-chart-tipos" height="110"></canvas>
+                    </div>
+                </div>
+
+                <!-- MATRIZ DINAMICA -->
+                <div class="table-container report-table-container" style="overflow-x: auto; margin-top: 10px;">
+                    <table id="cc-matriz" class="cc-matriz-table" style="width: 100%; border-collapse: collapse;">
+                        <thead></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TOAST CARGO CAJA -->
+            <div id="cc-toast" class="cc-toast">
+                <i class="fas fa-spinner fa-spin"></i> <span id="cc-toast-msg">Consultando…</span>
+            </div>
+
             <!-- VISTA: GESTIÓN DE RECETAS (CORREGIDO) -->
             <div id="view-recetas" class="view-section" style="display:none;">
                 <header>
@@ -771,6 +875,49 @@
                     required></select>
                 <div class="modal-actions"><button type="submit" class="btn-save">Crear Usuario</button></div>
             </form>
+        </div>
+    </div>
+
+    <!-- MODAL DETALLE CARGO CAJA RESULTADO (drill-down estilo FICO) -->
+    <div id="modal-cargo-detalle" class="modal">
+        <div class="modal-content" style="width: 900px; max-width: 95%;">
+            <span class="close" onclick="closeModal('modal-cargo-detalle')">&times;</span>
+            <h2 id="cc-detalle-titulo">Detalle</h2>
+            <div style="margin-top: 15px;">
+                <h3 style="font-size: .95rem; color: var(--text-secondary); margin-bottom: 8px;">Desglose por Razón (FICO)</h3>
+                <div class="table-container report-table-container" style="overflow-x: auto; max-height: 280px; overflow-y: auto;">
+                    <table id="cc-detalle-razones" style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr>
+                                <th>RAZÓN</th>
+                                <th style="text-align:right;">MONTO</th>
+                                <th style="text-align:center;">N°</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+            <div style="margin-top: 15px;">
+                <h3 style="font-size: .95rem; color: var(--text-secondary); margin-bottom: 8px;">Movimientos</h3>
+                <div class="table-container report-table-container" style="overflow-x: auto; max-height: 280px; overflow-y: auto;">
+                    <table id="cc-detalle-registros" style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr>
+                                <th>DOCUMENTO</th>
+                                <th>TIPO</th>
+                                <th>FECHA</th>
+                                <th>RAZÓN</th>
+                                <th>DESTINATARIO</th>
+                                <th>EMPRESA</th>
+                                <th>SEDE</th>
+                                <th style="text-align:right;">MONTO</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 

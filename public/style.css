@@ -1100,6 +1100,37 @@ form label {
     padding: 15px;
 }
 
+/* TOAST CARGO CAJA RESULTADO */
+.cc-toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translate(-50%, 20px);
+    background: rgba(15, 23, 42, 0.92);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    z-index: 300;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.cc-toast.show {
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
+
+.cc-toast i {
+    color: var(--accent, #60a5fa);
+}
+
 /* MEDIA QUERIES */
 @media (max-width: 1024px) {
     .sidebar {
