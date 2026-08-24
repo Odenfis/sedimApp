@@ -9,15 +9,15 @@ rem   - Copia los RES_*.exe al Escritorio del usuario
 rem   - Copia los Res*.dll a C:\Windows\SysWOW64 y los registra
 rem  Requiere Windows 10 (1803+) o Windows 11.
 rem
-rem  Si se actualiza el ZIP en Drive, regenerar el hash con:
-rem    certutil -hashfile actualizacionSedim.zip SHA256
-rem  y reemplazar el valor de ZIP_SHA256 mas abajo.
+rem  PLANTILLA: los valores entre @@...@@ son reemplazados por el servidor
+rem  (Configurador de Actualizaciones) al momento de la descarga.
+rem  Si ZIP_SHA256 queda vacio, el paso [2/6] de validacion se omite.
 rem ============================================================
 
-set "DRIVE_ID=1LFzUE6xf3kwR2QlfwsJ2qOZY0OGxBR_J"
+set "DRIVE_ID=@@DRIVE_ID@@"
 set "ZIP_URL=https://drive.usercontent.google.com/download?id=%DRIVE_ID%&export=download&confirm=t"
-set "ZIP_NAME=actualizacionSedim.zip"
-set "ZIP_SHA256=aaf342cb0cdb1fa5d0e021a2750bd127ece3138d813e54dc53b4e62a79b38cc4"
+set "ZIP_NAME=@@ZIP_NAME@@"
+set "ZIP_SHA256=@@ZIP_SHA256@@"
 set "WORKDIR=%TEMP%\sedim_upd"
 set "LOG=%TEMP%\sedim_instalador.log"
 
@@ -62,6 +62,11 @@ for %%Z in ("%WORKDIR%\%ZIP_NAME%") do if %%~zZ LSS 1000000 goto :fail_download
 >>"%LOG%" echo [OK] Descarga completada
 
 echo [2/6] Validando integridad del archivo (SHA256)...
+if "%ZIP_SHA256%"=="" (
+    echo       Hash no configurado - validacion de integridad omitida.
+    >>"%LOG%" echo [AVISO] Sin SHA256 configurado - validacion de integridad omitida
+    goto :skip_hash
+)
 set "CALC_HASH="
 for /f "usebackq skip=1 delims=" %%H in (`certutil -hashfile "%WORKDIR%\%ZIP_NAME%" SHA256`) do (
     if not defined CALC_HASH set "CALC_HASH=%%H"
@@ -69,6 +74,7 @@ for /f "usebackq skip=1 delims=" %%H in (`certutil -hashfile "%WORKDIR%\%ZIP_NAM
 if not defined CALC_HASH goto :fail_hash
 if /i not "%CALC_HASH%"=="%ZIP_SHA256%" goto :fail_hash
 >>"%LOG%" echo [OK] Hash SHA256 verificado
+:skip_hash
 
 echo [3/6] Extrayendo archivos...
 mkdir "%WORKDIR%\src" >nul 2>&1

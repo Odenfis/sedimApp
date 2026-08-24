@@ -2,6 +2,7 @@ const express = require('express');
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
 const path = require('path');
+const fs = require('fs');
 const ExcelJS = require('exceljs');
 const { getConnection, sql } = require('./db');
 
@@ -301,11 +302,113 @@ app.post('/api/revision-nube', isAuthenticated, async (req, res) => {
 });
 
 // ==========================================
-//  DESCARGA INSTALADOR ACTUALIZACION ERP NUBE
+//  CONFIGURADOR DE ACTUALIZACIONES ERP (ADMIN)
 // ==========================================
-app.get('/api/herramientas/actualizar-erp', isAuthenticated, (req, res) => {
+
+// Valores por defecto (migrados del .bat original) si no hay configuración en BD
+const ACTUALIZACION_DEFAULTS = {
+    drive_id: '1LFzUE6xf3kwR2QlfwsJ2qOZY0OGxBR_J',
+    zip_name: 'actualizacionSedim.zip',
+    sha256: 'aaf342cb0cdb1fa5d0e021a2750bd127ece3138d813e54dc53b4e62a79b38cc4'
+};
+
+function requiereConfigActualizaciones(req, res, next) {
+    if (!req.session.user.permisos.includes('config_actualizaciones')) return res.status(403).json({ message: 'Sin permisos' });
+    next();
+}
+
+// Extrae el ID de archivo de un enlace de Google Drive
+// Soporta: /file/d/ID/view..., ?id=ID, uc?id=ID, /d/ID
+function extraerDriveId(url) {
+    const m = String(url || '').match(/(?:\/file\/d\/|[?&]id=|\/d\/)([A-Za-z0-9_-]{10,})/);
+    return m ? m[1] : null;
+}
+
+app.get('/api/admin/config-actualizaciones', isAuthenticated, requiereConfigActualizaciones, async (req, res) => {
+    try {
+        const pool = await getConnection();
+        const activo = await pool.request()
+            .query('SELECT TOP 1 * FROM Actualizaciones_ERP WHERE activo = 1 ORDER BY fecha_creacion DESC');
+        const historial = await pool.request()
+            .query('SELECT TOP 20 id, drive_url, zip_name, sha256, nota, creado_por, fecha_creacion FROM Actualizaciones_ERP ORDER BY fecha_creacion DESC');
+        res.json({ activo: activo.recordset[0] || null, historial: historial.recordset });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ message: 'Error al obtener la configuración' });
+    }
+});
+
+app.post('/api/admin/config-actualizaciones', isAuthenticated, requiereConfigActualizaciones, async (req, res) => {
+    try {
+        const { drive_url, sha256, nota } = req.body;
+        const driveId = extraerDriveId(drive_url);
+        if (!driveId) return res.status(400).json({ message: 'El enlace de Google Drive no es válido' });
+
+        let hash = null;
+        if (sha256 && String(sha256).trim() !== '') {
+            hash = String(sha256).trim().toLowerCase();
+            if (!/^[a-f0-9]{64}$/.test(hash)) return res.status(400).json({ message: 'El SHA256 debe ser un valor hexadecimal de 64 caracteres' });
+        }
+
+        const pool = await getConnection();
+        const transaccion = new sql.Transaction(pool);
+        await transaccion.begin();
+        try {
+            await new sql.Request(transaccion).query('UPDATE Actualizaciones_ERP SET activo = 0 WHERE activo = 1');
+            await new sql.Request(transaccion)
+                .input('drive_id', sql.VarChar, driveId)
+                .input('drive_url', sql.VarChar, String(drive_url).substring(0, 500))
+                .input('zip_name', sql.VarChar, ACTUALIZACION_DEFAULTS.zip_name)
+                .input('sha256', sql.VarChar, hash)
+                .input('nota', sql.VarChar, nota && String(nota).trim() !== '' ? String(nota).trim().substring(0, 300) : null)
+                .input('creado_por', sql.VarChar, req.session.user.usuario)
+                .query(`INSERT INTO Actualizaciones_ERP (drive_id, drive_url, zip_name, sha256, nota, activo, creado_por)
+                        VALUES (@drive_id, @drive_url, @zip_name, @sha256, @nota, 1, @creado_por)`);
+            await transaccion.commit();
+        } catch (errTx) {
+            await transaccion.rollback();
+            throw errTx;
+        }
+        res.json({ message: 'Configuración guardada. El instalador .BAT se generará con este enlace.', drive_id: driveId });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ message: 'Error al guardar la configuración' });
+    }
+});
+
+// ==========================================
+//  DESCARGA INSTALADOR ACTUALIZACION ERP NUBE
+//  Genera el .bat dinámicamente con la config activa de BD
+// ==========================================
+app.get('/api/herramientas/actualizar-erp', isAuthenticated, async (req, res) => {
     if (!req.session.user.permisos.includes('herramientas')) return res.status(403).json({ message: 'Sin permisos' });
-    res.download(path.join(__dirname, 'updates', 'Actualizar_ERP_Nube.bat'), 'Actualizar_ERP_Nube.bat');
+    try {
+        const cfg = { ...ACTUALIZACION_DEFAULTS };
+        try {
+            const pool = await getConnection();
+            const r = await pool.request()
+                .query('SELECT TOP 1 drive_id, zip_name, sha256 FROM Actualizaciones_ERP WHERE activo = 1 ORDER BY fecha_creacion DESC');
+            if (r.recordset.length > 0) {
+                cfg.drive_id = r.recordset[0].drive_id;
+                cfg.zip_name = r.recordset[0].zip_name || ACTUALIZACION_DEFAULTS.zip_name;
+                cfg.sha256 = r.recordset[0].sha256 || '';
+            }
+        } catch (dbErr) { console.error('Config de actualización no disponible en BD, usando valores por defecto:', dbErr.message); }
+
+        const plantilla = fs.readFileSync(path.join(__dirname, 'updates', 'Actualizar_ERP_Nube.bat'), 'utf8');
+        const contenido = plantilla
+            .replace(/@@DRIVE_ID@@/g, cfg.drive_id)
+            .replace(/@@ZIP_NAME@@/g, cfg.zip_name)
+            .replace(/@@ZIP_SHA256@@/g, cfg.sha256 || '');
+
+        res.setHeader('Content-Type', 'application/octet-stream');
+        res.setHeader('Content-Disposition', 'attachment; filename="Actualizar_ERP_Nube.bat"');
+        res.send(contenido);
+    } catch (e) {
+        console.error(e);
+        // Fallback: servir el archivo original si la generación falla
+        res.download(path.join(__dirname, 'updates', 'Actualizar_ERP_Nube.bat'), 'Actualizar_ERP_Nube.bat');
+    }
 });
 
 // ==========================================

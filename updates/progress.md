@@ -73,7 +73,7 @@ en la carpeta `public/`.
 | Tabla | Uso |
 |-------|-----|
 | `usuariosweb` | Usuarios del sistema web (credenciales + rol) |
-| `Roles`, `Roles_Permisos`, `Modulos` | Roles, permisos y módulos (RBAC) |
+| `Roles`, `Roles_Permisos`, `Modulos` | Roles, permisos y módulos (RBAC). `Modulos` = (id, clave, nombre NOT NULL) |
 | `Equipos_Areas` | Áreas (ej. Atención al cliente, Producción) |
 | `Equipos_Sedes` | Sedes por área |
 | `Equipos_Computadoras` | Computadoras por sede (tipo, hostname, estado) |
@@ -90,6 +90,7 @@ en la carpeta `public/`.
 | `Pagos_Tickets` | Pagos de tickets |
 | `Recetas` | Recetas de productos (ingredientes) |
 | `CtaProveedor` | Cuentas por pagar de proveedores |
+| `Actualizaciones_ERP` | Historial del Configurador de Actualizaciones (enlace Drive, SHA256, nota, activo) |
 
 ### Store procedures
 
@@ -122,6 +123,7 @@ en la carpeta `public/`.
 | **Auditoría** | `GET /api/auditoria/*` (tickets, doc-sin-detalle, corregir-carga, subida-nube) | ✅ Implementado |
 | **Cierre de Turnos (Operaciones)** | `get /api/operaciones/turnos`, `PUT /api/operaciones/turnos/:id` | ✅ Implementado |
 | **Actualizar Sistema ERP Nube (Herramientas)** | `GET /api/herramientas/actualizar-erp` | ✅ Implementado |
+| **Configurador de Actualizaciones (Admin)** | `GET/POST /api/admin/config-actualizaciones`, generación dinámica del .bat en `/api/herramientas/actualizar-erp` | ✅ Implementado |
 
 ---
 
@@ -217,6 +219,75 @@ en la carpeta `public/`.
   cerraban el bloque antes de tiempo, dejando `pause`/`exit /b` huérfanos que se ejecutaban
   siempre. Corregido (mensaje con guiones) + fallback `Expand-Archive` cuando falta
   `tar.exe` (Windows 10 < 1803). Auditados todos los bloques del archivo.
+- Estado: ✅
+
+**24/08/2026** — Configurador de Actualizaciones (solo rol Administrador)
+- Objetivo: eliminar la edición manual del `.bat`. El administrador pega solo el enlace
+  de Google Drive del `.zip` en una nueva vista y el servidor genera el instalador
+  dinámicamente al descargarlo.
+- BD (script re-ejecutable `sql/setup_configurador_actualizaciones.sql`):
+  tabla `Actualizaciones_ERP` (drive_id, drive_url, zip_name, sha256 NULL, nota,
+  activo, creado_por, fecha_creacion), módulo nuevo `config_actualizaciones` asignado
+  SOLO al rol 'Administrador' vía `Roles_Permisos`, y seed con los valores vigentes.
+  SHA256 es opcional: si queda vacío, el .bat generado omite la validación de integridad
+  (queda el chequeo de tamaño > 1MB).
+- Plantilla: `updates/Actualizar_ERP_Nube.bat` ahora usa marcadores `@@DRIVE_ID@@`,
+  `@@ZIP_NAME@@`, `@@ZIP_SHA256@@`; el paso [2/6] quedó condicional (`if "%ZIP_SHA256%"==""`
+  → salta a `:skip_hash`). Se preservó ASCII + CRLF.
+- Backend (`server.js`): middleware `requiereConfigActualizaciones`,
+  `GET /api/admin/config-actualizaciones` (config activa + historial TOP 20) y
+  `POST /api/admin/config-actualizaciones` (extrae el ID del enlace con regex que soporta
+  `/file/d/ID`, `?id=ID`, `/d/ID`; valida ID `[A-Za-z0-9_-]{10,}` y SHA256 hex-64;
+  transacción: desactiva anterior + inserta nuevo). `GET /api/herramientas/actualizar-erp`
+  ahora lee la config activa, sustituye los marcadores y sirve el .bat generado; si no hay
+  config en BD o falla, usa valores por defecto / sirve el archivo original (fallback).
+- Frontend: ítem independiente "Configurador de Actualizaciones" debajo de
+  "Usuarios Sistema" (`data-module="config_actualizaciones"`, se oculta solo para roles
+  sin el permiso vía `aplicarPermisos()`); vista `#view-config-actualizaciones` con
+  formulario (enlace, SHA256 opcional, nota), tarjeta "Configuración vigente" y tabla de
+  historial. Funciones `cargarConfigActualizacion()` / `guardarConfigActualizacion()`
+  (+ helper `escapeHtmlCfg`) en `script.js`.
+- Archivos: `sql/setup_configurador_actualizaciones.sql`, `updates/Actualizar_ERP_Nube.bat`,
+  `server.js`, `public/dashboard.html`, `public/script.js`, `updates/progress.md`.
+- **Ejecución 24/08/2026**: script aplicado a Azure SQL (tabla creada, módulo + permiso
+  asignado solo al rol 'administrador' — en minúscula en la BD, se usa `LOWER(nombre)`
+  para no depender del collation, y seed insertado). Ajuste del script: `Modulos`
+  requiere la columna `nombre` (NOT NULL), el INSERT inicial sin ella fallaba.
+  Verificado: login de administrador devuelve `config_actualizaciones`; otros roles no.
+- Estado: ✅
+
+**24/08/2026** — Rediseño visual del sidebar
+- Objetivo: menú ordenado con textos largos ("Configurador de Actualizaciones",
+  "Actualizar Sistema ERP Nube", etc.), que antes se cortaban abruptamente.
+- Textos: ahora envuelven a 2 líneas limpias (`white-space: normal` +
+  `overflow-wrap`) con el ícono alineado a la primera línea.
+- Contenedor: ancho 260px → 284px (`--sidebar-width`); menú con scroll propio
+  (scrollbar fina discreta) para cuando hay submenús abiertos; móvil (≤1024px)
+  alineado con la variable en lugar de números fijos (`left`/`translateX`/`width`).
+- Ítem activo: barra de acento izquierda (`box-shadow inset 3px`) + tinte suave
+  (`color-mix(in srgb, var(--accent) 14%, transparent)` con fallback); aplica también
+  a ítems activos de submenú. Funciona en tema claro y oscuro.
+- Submenús: jerarquía visual con línea guía vertical izquierda, fuente menor
+  (0.88rem), color secundario y micro-animación fade al desplegar (`@keyframes submenuIn`).
+- HTML: `title` en los 21 ítems del menú (tooltip con nombre completo, clave en modo
+  colapsado) y estilos inline del `submenu-toggle` reemplazados por clase `.submenu-label`.
+- Sin cambios de JavaScript (`aplicarPermisos()`, `toggleSubmenu()`, `showView()` intactos).
+- Archivos: `public/dashboard.html`, `public/style.css`.
+- Estado: ✅
+
+**24/08/2026** — Pulido de alineación del sidebar (solo CSS)
+- Variables de ritmo dentro de `.sidebar`: `--sb-pad-x` (13px), `--sb-icon-box`
+  (24px columna fija de ícono) y `--sb-gap` (12px hueco ícono→texto uniforme en los
+  3 niveles; el submenú usaba 10px).
+- Centrado vertical exacto de íconos: cajas de altura igual a una línea de texto
+  (`1.283rem` nivel principal/toggles = 0.95rem×1.35; `1.188rem` submenús = 0.88rem×1.35)
+  con flex centering — sustituye el parche `margin-top: 3px`; funciona con texto de
+  1 o 2 líneas.
+- Línea guía del submenú alineada al eje central del ícono del grupo padre vía
+  `calc(var(--sb-pad-x) + var(--sb-icon-box) / 2 - 1px)`.
+- Modo colapsado intacto (sus overrides `!important` siguen teniendo prioridad);
+  sin cambios en HTML ni JS.
+- Archivos: `public/style.css`.
 - Estado: ✅
 
 ---

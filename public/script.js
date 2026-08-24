@@ -181,6 +181,10 @@ function showView(viewName) {
         if (viewName === 'cargo-caja-resultado') {
             cargarComboSedeCargo().then(() => cargarCargoResultado());
         }
+
+        if (viewName === 'config-actualizaciones') {
+            cargarConfigActualizacion();
+        }
     }
 
     // 4. Activar visualmente el ítem
@@ -1876,4 +1880,81 @@ async function exportarCargoResultado() {
     } finally {
         btn.innerHTML = original;
     }
+}
+
+// ==========================================
+//  CONFIGURADOR DE ACTUALIZACIONES (ADMIN)
+// ==========================================
+
+function escapeHtmlCfg(texto) {
+    return String(texto == null ? '' : texto)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+async function cargarConfigActualizacion() {
+    try {
+        const res = await fetch('/api/admin/config-actualizaciones');
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const cont = document.getElementById('cfg-vigente');
+        if (cont) {
+            if (data.activo) {
+                const f = data.activo.fecha_creacion ? new Date(data.activo.fecha_creacion).toLocaleString() : '-';
+                cont.innerHTML = `
+                    <p style="margin:4px 0;"><strong>Nota / Versión:</strong> ${data.activo.nota ? escapeHtmlCfg(data.activo.nota) : '—'}</p>
+                    <p style="margin:4px 0;"><strong>Enlace:</strong> <a href="${escapeHtmlCfg(data.activo.drive_url)}" target="_blank" rel="noopener">${escapeHtmlCfg(data.activo.drive_url)}</a></p>
+                    <p style="margin:4px 0;"><strong>SHA256:</strong> ${data.activo.sha256 ? '<code>' + escapeHtmlCfg(data.activo.sha256) + '</code>' : '<em>No configurado (la instalación omite la validación de integridad)</em>'}</p>
+                    <p style="margin:4px 0;"><strong>Registrado por:</strong> ${escapeHtmlCfg(data.activo.creado_por)} — ${f}</p>`;
+            } else {
+                cont.innerHTML = '<em>Sin configuración registrada. Se usarán los valores por defecto.</em>';
+            }
+        }
+
+        const tbody = document.querySelector('#cfg-historial-table tbody');
+        if (tbody) {
+            tbody.innerHTML = '';
+            (data.historial || []).forEach(h => {
+                const f = h.fecha_creacion ? new Date(h.fecha_creacion).toLocaleString() : '-';
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>${f}</td>
+                    <td>${h.nota ? escapeHtmlCfg(h.nota) : '—'}</td>
+                    <td style="max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtmlCfg(h.drive_url)}</td>
+                    <td>${h.sha256 ? escapeHtmlCfg(h.sha256.substring(0, 12)) + '…' : '—'}</td>
+                    <td>${escapeHtmlCfg(h.creado_por)}</td>`;
+                tbody.appendChild(tr);
+            });
+            if (!data.historial || data.historial.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#888;">Sin registros</td></tr>';
+            }
+        }
+    } catch (e) { console.error(e); }
+}
+
+async function guardarConfigActualizacion() {
+    const drive_url = document.getElementById('cfg-drive-url').value.trim();
+    const sha256 = document.getElementById('cfg-sha256').value.trim();
+    const nota = document.getElementById('cfg-nota').value.trim();
+
+    if (!drive_url) { alert('Ingrese el enlace de Google Drive del archivo .zip'); return; }
+    if (!confirm('¿Guardar esta configuración? El instalador .BAT que descargan los usuarios se generará con este enlace.')) return;
+
+    try {
+        const res = await fetch('/api/admin/config-actualizaciones', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ drive_url, sha256: sha256 || null, nota: nota || null })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+            alert(data.message || 'Configuración guardada');
+            document.getElementById('cfg-drive-url').value = '';
+            document.getElementById('cfg-sha256').value = '';
+            document.getElementById('cfg-nota').value = '';
+            cargarConfigActualizacion();
+        } else {
+            alert(data.message || 'Error al guardar');
+        }
+    } catch (e) { console.error(e); alert('Error de conexión'); }
 }

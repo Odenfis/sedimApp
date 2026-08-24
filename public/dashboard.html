@@ -35,97 +35,104 @@
 
             <ul>
                 <!-- AGREGADOS data-module para control de permisos robusto -->
-                <li onclick="showView('equipos')" class="active" data-module="equipos">
+                <li onclick="showView('equipos')" class="active" data-module="equipos" title="Control de Equipos">
                     <i class="fas fa-desktop"></i> <span>Control de Equipos</span>
                 </li>
-                <li onclick="showView('usuarios')" data-module="usuarios">
+                <li onclick="showView('usuarios')" data-module="usuarios" title="Usuarios Sistema">
                     <i class="fas fa-users"></i> <span>Usuarios Sistema</span>
+                </li>
+                <!-- NUEVA OPCIÓN: CONFIGURADOR DE ACTUALIZACIONES (SOLO ROL ADMINISTRADOR) -->
+                <li onclick="showView('config-actualizaciones')" data-module="config_actualizaciones"
+                    title="Configurador de Actualizaciones">
+                    <i class="fas fa-arrows-rotate"></i> <span>Configurador de Actualizaciones</span>
                 </li>
                 <!-- NUEVO MENÚ HERRAMIENTAS -->
                 <li class="has-submenu" data-module="herramientas">
-                    <div class="submenu-toggle" onclick="toggleSubmenu(this)">
-                        <div style="display:flex; align-items:center;">
+                    <div class="submenu-toggle" onclick="toggleSubmenu(this)" title="Herramientas">
+                        <div class="submenu-label">
                             <i class="fas fa-toolbox"></i> <span>Herramientas</span>
                         </div>
                         <i class="fas fa-chevron-down arrow-icon"></i>
                     </div>
                     <ul class="submenu">
-                        <li onclick="showView('precios')" data-module="precios">
+                        <li onclick="showView('precios')" data-module="precios" title="Cambio de Precios">
                             <i class="fas fa-tags"></i> <span>Cambio de Precios</span>
                         </li>
-                        <li onclick="showView('revision')" data-module="revision">
+                        <li onclick="showView('revision')" data-module="revision" title="Revisión Datos Nube">
                             <i class="fas fa-cloud"></i> <span>Revisión Datos Nube</span>
                         </li>
                         <!-- NUEVA OPCIÓN: ACTUALIZAR ERP NUBE -->
-                        <li onclick="showView('actualizar-erp')" data-module="herramientas">
+                        <li onclick="showView('actualizar-erp')" data-module="herramientas"
+                            title="Actualizar Sistema ERP Nube">
                             <i class="fas fa-cloud-arrow-down"></i> <span>Actualizar Sistema ERP Nube</span>
                         </li>
                     </ul>
                 </li>
                 <li class="has-submenu" data-module="operaciones">
-                    <div class="submenu-toggle" onclick="toggleSubmenu(this)">
-                        <div style="display:flex; align-items:center;">
+                    <div class="submenu-toggle" onclick="toggleSubmenu(this)" title="Operaciones">
+                        <div class="submenu-label">
                             <i class="fas fa-cogs"></i> <span>Operaciones</span>
                         </div>
                         <i class="fas fa-chevron-down arrow-icon"></i>
                     </div>
                     <ul class="submenu">
-                        <li onclick="showView('prod-almacen')">
+                        <li onclick="showView('prod-almacen')" title="Productos Almacén">
                             <i class="fas fa-boxes"></i> <span>Productos Almacén</span>
                         </li>
                         <!-- ANTIGUO: GESTIÓN RECETAS -->
-                        <li onclick="showView('recetas')">
+                        <li onclick="showView('recetas')" title="Gestión Recetas">
                             <i class="fas fa-utensils"></i> <span>Gestión Recetas</span>
                         </li>
                         <!-- NUEVO: CIERRE DE TURNOS -->
-                        <li onclick="showView('cierre-turnos')">
+                        <li onclick="showView('cierre-turnos')" title="Cierre de Turnos">
                             <i class="fas fa-clock-rotate-left"></i> <span>Cierre de Turnos</span>
                         </li>
                     </ul>
                 </li>
                 <!-- MÓDULO AUDITORÍA -->
                 <li class="has-submenu" data-module="auditoria">
-                    <div class="submenu-toggle" onclick="toggleSubmenu(this)">
-                        <div style="display:flex; align-items:center;">
+                    <div class="submenu-toggle" onclick="toggleSubmenu(this)" title="Auditoría">
+                        <div class="submenu-label">
                             <i class="fas fa-shield-halved"></i> <span>Auditoría</span>
                         </div>
                         <i class="fas fa-chevron-down arrow-icon"></i>
                     </div>
                     <ul class="submenu">
-                        <li onclick="showView('tickets-no-pagados')">
+                        <li onclick="showView('tickets-no-pagados')" title="Tickets No Pagados">
                             <i class="fas fa-receipt"></i> <span>Tickets No Pagados</span>
                         </li>
                         <!-- NUEVA OPCIÓN -->
-                        <li onclick="showView('doc-sin-detalle')">
+                        <li onclick="showView('doc-sin-detalle')" title="Docs Sin Detalle">
                             <i class="fas fa-file-circle-exclamation"></i> <span>Docs Sin Detalle</span>
                         </li>
                         <!-- NUEVA OPCIÓN -->
-                        <li onclick="showView('subida-nube')">
+                        <li onclick="showView('subida-nube')" title="Auditoria Subida Nube">
                             <i class="fas fa-cloud-arrow-up"></i> <span>Auditoria Subida Nube</span>
                         </li>
                     </ul>
                 </li>
                 <li class="has-submenu" data-module="reportes">
-                    <div class="submenu-toggle" onclick="toggleSubmenu(this)">
-                        <div style="display:flex; align-items:center;">
+                    <div class="submenu-toggle" onclick="toggleSubmenu(this)" title="Reportes">
+                        <div class="submenu-label">
                             <i class="fas fa-chart-line"></i> <span>Reportes</span>
                         </div>
                         <i class="fas fa-chevron-down arrow-icon"></i>
                     </div>
                     <ul class="submenu">
-                        <li onclick="showView('reportes-salida')">
+                        <li onclick="showView('reportes-salida')" title="Salida Insumos">
                             <i class="fas fa-file-export"></i> <span>Salida Insumos</span>
                         </li>
                         <!-- NUEVO REPORTE -->
-                        <li onclick="showView('reportes-cargos')">
+                        <li onclick="showView('reportes-cargos')" title="Cargos de Caja">
                             <i class="fas fa-cash-register"></i> <span>Cargos de Caja</span>
                         </li>
                         <!-- NUEVO REPORTE CTA PROVEEDORES -->
-                        <li onclick="showView('reportes-saldo-prov')">
+                        <li onclick="showView('reportes-saldo-prov')" title="Saldo Proveedores">
                             <i class="fas fa-file-invoice-dollar"></i> <span>Saldo Proveedores</span>
                         </li>
                         <!-- NUEVO REPORTE: CARGO CAJA RESULTADO -->
-                        <li onclick="showView('cargo-caja-resultado')" data-module="reportes">
+                        <li onclick="showView('cargo-caja-resultado')" data-module="reportes"
+                            title="Cargo Caja Resultado">
                             <i class="fas fa-chart-pie"></i> <span>Cargo Caja Resultado</span>
                         </li>
                     </ul>
@@ -133,7 +140,7 @@
             </ul>
 
             <div class="sidebar-footer">
-                <li onclick="logout()" class="logout-btn">
+                <li onclick="logout()" class="logout-btn" title="Cerrar Sesión">
                     <i class="fas fa-sign-out-alt"></i> <span>Cerrar Sesión</span>
                 </li>
             </div>
@@ -251,6 +258,58 @@
                     <a class="btn-save" href="/api/herramientas/actualizar-erp"
                         style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px; border-radius: 6px;"><i
                             class="fas fa-download"></i> Descargar Instalador (.bat)</a>
+                </div>
+            </div>
+
+            <!-- VISTA: CONFIGURADOR DE ACTUALIZACIONES (SOLO ADMIN) -->
+            <div id="view-config-actualizaciones" class="view-section" style="display:none;">
+                <header>
+                    <h1>Configurador de Actualizaciones</h1>
+                </header>
+                <div class="card-simple" style="max-width: 760px;">
+                    <p style="margin-top: 0;">Pegue el enlace de Google Drive del archivo <strong>.zip</strong> de la
+                        nueva versión y guarde. El instalador <strong>.BAT</strong>
+                        (Herramientas &gt; Actualizar Sistema ERP Nube) se generará automáticamente con este enlace.
+                    </p>
+                    <div style="margin-bottom: 14px;">
+                        <label for="cfg-drive-url" style="font-weight:600; display:block; margin-bottom:6px;">Enlace de
+                            Google Drive del .zip</label>
+                        <input type="text" id="cfg-drive-url"
+                            placeholder="https://drive.google.com/file/d/XXXXXXXXXXXXXXXXXX/view...">
+                    </div>
+                    <div style="margin-bottom: 14px;">
+                        <label for="cfg-sha256" style="font-weight:600; display:block; margin-bottom:6px;">SHA256 del ZIP
+                            (opcional)</label>
+                        <input type="text" id="cfg-sha256"
+                            placeholder="Si se deja vacío, la instalación omite la validación de integridad">
+                    </div>
+                    <div style="margin-bottom: 18px;">
+                        <label for="cfg-nota" style="font-weight:600; display:block; margin-bottom:6px;">Nota / Versión
+                            (opcional)</label>
+                        <input type="text" id="cfg-nota" placeholder="Ej: v2.5 - corrección en módulo de ventas">
+                    </div>
+                    <button class="btn-save" onclick="guardarConfigActualizacion()"
+                        style="border-radius: 6px;"><i class="fas fa-floppy-disk"></i> Guardar Actualización</button>
+                </div>
+
+                <div class="card-simple" style="max-width: 760px; margin-top: 16px;">
+                    <h3 style="margin-top:0;">Configuración vigente</h3>
+                    <div id="cfg-vigente"><em>Cargando...</em></div>
+                </div>
+
+                <div class="table-container" style="margin-top: 16px;">
+                    <table id="cfg-historial-table">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Nota / Versión</th>
+                                <th>Enlace Drive</th>
+                                <th>SHA256</th>
+                                <th>Registrado por</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
                 </div>
             </div>
 

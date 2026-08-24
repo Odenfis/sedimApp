@@ -23,7 +23,7 @@
     --table-row-hover: #f3f4f6;
     --logo-container-bg: #1f2937;
     --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    --sidebar-width: 260px;
+    --sidebar-width: 284px;
     --sidebar-width-collapsed: 70px;
 }
 
@@ -253,6 +253,13 @@ button {
 }
 
 .sidebar {
+    /* Ritmo visual del menú: valores únicos para todo el sidebar */
+    --sb-pad-x: 13px;
+    /* padding horizontal de ítems */
+    --sb-icon-box: 24px;
+    /* columna fija del ícono */
+    --sb-gap: 12px;
+    /* hueco ícono -> texto (uniforme en todos los niveles) */
     width: var(--sidebar-width);
     background: var(--sidebar-bg);
     padding: 20px 10px;
@@ -312,22 +319,63 @@ button {
 /* Menú */
 .sidebar ul {
     list-style: none;
-    padding: 0;
+    padding: 0 2px 0 0;
     flex: 1;
     width: 100%;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* Scrollbar fina y discreta para el menú */
+.sidebar ul::-webkit-scrollbar {
+    width: 6px;
+}
+
+.sidebar ul::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.sidebar ul::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 3px;
+}
+
+.sidebar ul::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
+}
+
+.sidebar ul {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color) transparent;
 }
 
 .sidebar li {
-    padding: 12px 15px;
+    padding: 11px var(--sb-pad-x);
     color: var(--sidebar-text);
     cursor: pointer;
     border-radius: 8px;
-    margin-bottom: 5px;
+    margin-bottom: 4px;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
+    font-size: 0.95rem;
+    line-height: 1.35;
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: normal;
+    transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* Caja de ícono con la altura exacta de una línea de texto
+   (0.95rem x 1.35): centra el ícono contra la primera línea,
+   con texto corto o envuelto a dos líneas */
+.sidebar ul > li > i,
+.submenu-label i {
+    height: 1.283rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .sidebar li:hover {
@@ -335,15 +383,22 @@ button {
 }
 
 .sidebar li.active {
-    background: var(--accent);
-    color: white;
+    background: var(--sidebar-active);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    box-shadow: inset 3px 0 0 var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.sidebar li.active:hover {
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .sidebar i {
-    min-width: 24px;
+    min-width: var(--sb-icon-box);
     text-align: center;
     font-size: 1.1rem;
-    margin-right: 12px;
+    margin-right: var(--sb-gap);
 }
 
 /* Submenu */
@@ -352,14 +407,19 @@ button {
 }
 
 .submenu-toggle {
-    padding: 12px 15px;
+    padding: 11px var(--sb-pad-x);
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
+    gap: 8px;
     cursor: pointer;
     width: 100%;
     box-sizing: border-box;
     color: var(--sidebar-text);
+    font-size: 0.95rem;
+    font-weight: 500;
+    line-height: 1.35;
+    transition: background 0.15s ease, color 0.15s ease;
 }
 
 .submenu-toggle:hover {
@@ -367,24 +427,84 @@ button {
     border-radius: 8px;
 }
 
+.submenu-toggle .arrow-icon {
+    height: 1.283rem;
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    transition: transform 0.2s ease;
+}
+
+/* Etiqueta del grupo de submenú (reemplaza estilos inline) */
+.submenu-label {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    flex: 1;
+}
+
+.submenu-label span {
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: normal;
+    line-height: 1.35;
+}
+
 .submenu {
     display: none;
     list-style: none;
-    padding-left: 20px;
+    padding-left: 4px;
+    /* La guía vertical queda alineada al eje central del ícono del grupo padre */
+    margin: 2px 6px 4px calc(var(--sb-pad-x) + var(--sb-icon-box) / 2 - 1px);
     background: rgba(0, 0, 0, 0.03);
-    border-radius: 8px;
-    margin-top: 2px;
-    width: 100%;
+    border-left: 2px solid var(--border-color);
+    border-radius: 0 8px 8px 0;
     box-sizing: border-box;
 }
 
+[data-theme="dark"] .submenu {
+    background: rgba(255, 255, 255, 0.04);
+}
+
 .submenu li {
-    padding: 10px 15px;
-    font-size: 0.9rem;
+    padding: 9px var(--sb-gap);
+    margin-bottom: 2px;
+    font-size: 0.88rem;
+    color: var(--text-secondary);
+}
+
+/* Caja de ícono para la línea de texto de submenú (0.88rem x 1.35) */
+.submenu li > i {
+    height: 1.188rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.95rem;
+}
+
+.submenu li:hover {
+    color: var(--text-color);
+}
+
+.submenu li.active {
+    color: var(--accent);
 }
 
 .submenu.open {
     display: block;
+    animation: submenuIn 0.18s ease;
+}
+
+@keyframes submenuIn {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
 }
 
 .sidebar-footer {
@@ -1136,14 +1256,14 @@ form label {
     .sidebar {
         position: fixed;
         height: 100%;
-        left: -280px;
+        left: calc(-1 * var(--sidebar-width));
         top: 0;
         box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
-        width: 260px !important;
+        width: var(--sidebar-width) !important;
     }
 
     .sidebar.open {
-        transform: translateX(280px);
+        transform: translateX(var(--sidebar-width));
     }
 
     .mobile-menu-btn {
