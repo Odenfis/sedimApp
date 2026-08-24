@@ -775,17 +775,21 @@ async function consultarTicketsNoPagados() {
 
 // Cargar empresas desde n_codtabla = 200
 async function cargarEmpresasAuditoria() {
-    const select = document.getElementById('aud-doc-empresa');
-    if (!select) return;
+    const selects = ['aud-doc-empresa', 'sub-empresa']
+        .map(id => document.getElementById(id))
+        .filter(Boolean);
+    if (selects.length === 0) return;
     try {
         const res = await fetch('/api/reports/listas/empresas'); // Reutilizamos endpoint existente
         const data = await res.json();
-        select.innerHTML = '';
-        data.forEach(item => {
-            const opt = document.createElement('option');
-            opt.value = item.n_numero;
-            opt.innerText = item.c_describe;
-            select.appendChild(opt);
+        selects.forEach(select => {
+            select.innerHTML = '';
+            data.forEach(item => {
+                const opt = document.createElement('option');
+                opt.value = item.n_numero;
+                opt.innerText = item.c_describe;
+                select.appendChild(opt);
+            });
         });
     } catch (e) { console.error("Error cargando empresas auditoria", e); }
 }
@@ -861,6 +865,100 @@ async function ejecutarCorrigeCarga() {
         btn.innerHTML = originalHTML;
         btn.disabled = false;
     }
+}
+
+// ==========================================
+//  AUDITORIA: SUBIDA A LA NUBE (sp_aud_NumFactura)
+// ==========================================
+async function ejecutarAudSubidaNube() {
+    const emp = document.getElementById('sub-empresa').value;
+    const tur = document.getElementById('sub-turno').value;
+    const btn = document.getElementById('sub-btn-ejecutar');
+    const resumenEl = document.getElementById('sub-resumen');
+    const tarjetasEl = document.getElementById('sub-tarjetas');
+
+    if (!emp) { alert('Seleccione una empresa.'); return; }
+
+    const originalHTML = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Ejecutando...';
+    btn.disabled = true;
+
+    resumenEl.style.display = 'none';
+    tarjetasEl.style.display = 'none';
+
+    try {
+        const res = await fetch(`/api/auditoria/subida-nube?emp=${emp}&tur=${tur}`);
+        if (!res.ok) throw new Error('Error en servidor');
+        const data = await res.json();
+        renderAudSubidaNube(data);
+    } catch (e) {
+        console.error(e);
+        tarjetasEl.style.display = 'block';
+        tarjetasEl.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--red-status);"><i class="fas fa-triangle-exclamation"></i> Error al ejecutar la auditoría.</div>';
+    } finally {
+        btn.innerHTML = originalHTML;
+        btn.disabled = false;
+    }
+}
+
+function renderAudSubidaNube(data) {
+    const resumenEl = document.getElementById('sub-resumen');
+    const tarjetasEl = document.getElementById('sub-tarjetas');
+    const { resultados, resumen } = data;
+
+    if (!resultados || resultados.length === 0) {
+        resumenEl.style.display = 'none';
+        tarjetasEl.style.display = 'block';
+        tarjetasEl.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">La empresa seleccionada no devuelve verificaciones para esta auditoría.</div>';
+        return;
+    }
+
+    // Resumen global
+    const ok = resumen.ok || 0;
+    const err = resumen.errores || 0;
+    const todoOk = resumen.todoOk;
+    const color = todoOk ? 'var(--green-status)' : 'var(--red-status)';
+    const icono = todoOk ? 'fa-circle-check' : 'fa-triangle-exclamation';
+    const texto = todoOk ? 'Todo correcto en la nube' : 'Errores detectados en la nube';
+
+    resumenEl.style.display = 'block';
+    resumenEl.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 20px; padding: 16px 22px; border-radius: 10px; background: var(--card-bg); border: 1px solid ${color}; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 12px; font-size: 1.1rem; font-weight: bold; color: ${color};">
+                <i class="fas ${icono}" style="font-size: 1.6rem;"></i> ${texto}
+            </div>
+            <div style="font-size: .9rem; color: var(--text-secondary);">
+                <span style="color: var(--green-status); font-weight: bold;">${ok} OK</span> ·
+                <span style="color: var(--red-status); font-weight: bold;">${err} ERROR</span> ·
+                ${resumen.total} verificaciones
+            </div>
+        </div>`;
+
+    // Tarjetas semáforo por documento
+    const iconos = {
+        'Facturas': 'fa-file-invoice',
+        'Boletas': 'fa-receipt',
+        'Notas de venta': 'fa-store',
+        'Tickets': 'fa-ticket'
+    };
+
+    tarjetasEl.style.display = 'grid';
+    tarjetasEl.innerHTML = '';
+    resultados.forEach(r => {
+        const col = r.ok ? 'var(--green-status)' : 'var(--red-status)';
+        const ic = (r.ok ? 'fa-circle-check' : 'fa-circle-xmark');
+        const card = document.createElement('div');
+        card.className = 'kpi-card';
+        card.style.cssText = `background: var(--card-bg); border: 1px solid ${col}; border-radius: 8px; padding: 18px;`;
+        card.innerHTML = `
+            <div style="font-size: .8rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .5px;">
+                <i class="fas ${iconos[r.documento] || 'fa-file-circle-check'}" style="margin-right: 6px;"></i>${r.documento}
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 1.3rem; font-weight: bold; color: ${col};">
+                <i class="fas ${ic}"></i> ${r.ok ? 'Ok' : 'Error'}
+            </div>`;
+        tarjetasEl.appendChild(card);
+    });
 }
 
 // ==========================================

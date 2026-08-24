@@ -301,6 +301,14 @@ app.post('/api/revision-nube', isAuthenticated, async (req, res) => {
 });
 
 // ==========================================
+//  DESCARGA INSTALADOR ACTUALIZACION ERP NUBE
+// ==========================================
+app.get('/api/herramientas/actualizar-erp', isAuthenticated, (req, res) => {
+    if (!req.session.user.permisos.includes('herramientas')) return res.status(403).json({ message: 'Sin permisos' });
+    res.download(path.join(__dirname, 'updates', 'Actualizar_ERP_Nube.bat'), 'Actualizar_ERP_Nube.bat');
+});
+
+// ==========================================
 //  VALIDACIONES DE SEGURIDAD (NUEVO)
 // ==========================================
 app.post('/api/validate-password', isAuthenticated, async (req, res) => {
@@ -1141,6 +1149,52 @@ app.post('/api/auditoria/corregir-carga', isAuthenticated, async (req, res) => {
     } catch (e) {
         console.error(e);
         res.status(500).send('Error ejecutando corrección');
+    }
+});
+
+// 3. Auditoría de Subida a la Nube (sp_aud_NumFactura)
+app.get('/api/auditoria/subida-nube', isAuthenticated, async (req, res) => {
+    if (!req.session.user.permisos.includes('auditoria')) return res.status(403).json({ message: 'Sin permisos' });
+
+    const { emp, tur } = req.query;
+    try {
+        const pool = await getConnection();
+        const lines = [];
+        const request = pool.request()
+            .input('empresa', sql.Int, parseInt(emp))
+            .input('turno', sql.Int, parseInt(tur));
+
+        // El SP usa PRINT; capturamos los mensajes para estructurarlos
+        request.on('info', msg => {
+            if (msg && msg.message) lines.push(String(msg.message).trim());
+        });
+
+        await request.execute('sp_aud_NumFactura');
+
+        // Parsear "Ok en Facturas" / "Error en Boletas" ...
+        const resultados = [];
+        lines.forEach(line => {
+            const m = line.match(/^(Ok|Error)\s+en\s+(.+)$/i);
+            if (m) {
+                const ok = m[1].toLowerCase() === 'ok';
+                resultados.push({
+                    documento: m[2].trim().replace(/^./, c => c.toUpperCase()),
+                    estado: ok ? 'ok' : 'error',
+                    ok
+                });
+            }
+        });
+
+        const ok = resultados.filter(r => r.ok).length;
+        const errores = resultados.filter(r => !r.ok).length;
+
+        res.json({
+            resultados,
+            resumen: { total: resultados.length, ok, errores, todoOk: errores === 0 }
+        });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ message: 'Error en sp_aud_NumFactura' });
     }
 });
 

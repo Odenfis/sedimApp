@@ -56,6 +56,10 @@
                         <li onclick="showView('revision')" data-module="revision">
                             <i class="fas fa-cloud"></i> <span>Revisión Datos Nube</span>
                         </li>
+                        <!-- NUEVA OPCIÓN: ACTUALIZAR ERP NUBE -->
+                        <li onclick="showView('actualizar-erp')" data-module="herramientas">
+                            <i class="fas fa-cloud-arrow-down"></i> <span>Actualizar Sistema ERP Nube</span>
+                        </li>
                     </ul>
                 </li>
                 <li class="has-submenu" data-module="operaciones">
@@ -94,6 +98,10 @@
                         <!-- NUEVA OPCIÓN -->
                         <li onclick="showView('doc-sin-detalle')">
                             <i class="fas fa-file-circle-exclamation"></i> <span>Docs Sin Detalle</span>
+                        </li>
+                        <!-- NUEVA OPCIÓN -->
+                        <li onclick="showView('subida-nube')">
+                            <i class="fas fa-cloud-arrow-up"></i> <span>Auditoria Subida Nube</span>
                         </li>
                     </ul>
                 </li>
@@ -219,6 +227,30 @@
                 </div>
                 <div id="revision-grid" class="revision-grid">
                     <div class="empty-state-message"><i class="fas fa-arrow-up"></i> Selecciona filtros y consulta</div>
+                </div>
+            </div>
+
+            <!-- VISTA: ACTUALIZAR SISTEMA ERP NUBE -->
+            <div id="view-actualizar-erp" class="view-section" style="display:none;">
+                <header>
+                    <h1>Actualizar Sistema ERP Nube</h1>
+                </header>
+                <div class="card-simple" style="max-width: 640px;">
+                    <p style="margin-top: 0;">Descargue el instalador y ejecútelo en la computadora donde corre el ERP
+                        (acepte el aviso de permisos de Windows UAC cuando aparezca).</p>
+                    <p>El instalador automáticamente:</p>
+                    <ul style="line-height: 1.8;">
+                        <li>Cierra los procesos abiertos del ERP (RES_*.exe)</li>
+                        <li>Copia los ejecutables al <strong>Escritorio</strong> (sobrescribe los existentes)</li>
+                        <li>Copia las librerías DLL a <strong>C:\Windows\SysWOW64</strong></li>
+                        <li>Registra las DLL como administrador (regsvr32 de 32 bits)</li>
+                    </ul>
+                    <p style="margin-bottom: 20px; color: #888; font-size: 12px;">Requiere Windows 10/11. La descarga se
+                        valida con SHA256 antes de instalar. Al terminar se muestra un resumen y un log en
+                        %TEMP%\sedim_instalador.log</p>
+                    <a class="btn-save" href="/api/herramientas/actualizar-erp"
+                        style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px; border-radius: 6px;"><i
+                            class="fas fa-download"></i> Descargar Instalador (.bat)</a>
                 </div>
             </div>
 
@@ -818,6 +850,41 @@
                         </button>
                     </div>
                 </div>
+            </div>
+            <!-- VISTA: AUDITORÍA SUBIDA NUBE -->
+            <div id="view-subida-nube" class="view-section" style="display:none;">
+                <header>
+                    <h1>Auditoría: Subida a la Nube</h1>
+                </header>
+
+                <div class="report-top-bar">
+                    <div class="report-filters-group">
+                        <div class="filter-mini">
+                            <label>Empresa</label>
+                            <select id="sub-empresa">
+                                <option value="">Cargando...</option>
+                            </select>
+                        </div>
+                        <div class="filter-mini" style="width: 120px;">
+                            <label>Turno</label>
+                            <select id="sub-turno">
+                                <option value="1">Turno 1</option>
+                                <option value="2">Turno 2</option>
+                            </select>
+                        </div>
+                        <button class="btn-save" id="sub-btn-ejecutar" onclick="ejecutarAudSubidaNube()"
+                            style="height: 40px; margin-top: 18px;">
+                            <i class="fas fa-cloud-arrow-up"></i> Ejecutar
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Resumen global -->
+                <div id="sub-resumen" style="display: none; margin-bottom: 20px;"></div>
+
+                <!-- Tarjetas semáforo por documento -->
+                <div id="sub-tarjetas" class="kpi-grid"
+                    style="display: none; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;"></div>
             </div>
         </div>
     </div>
