@@ -2103,10 +2103,10 @@ function renderChartsVentas(data, diario) {
         },
         options: {
             responsive: true,
+            layout: { padding: { top: 35 } },
             plugins: {
                 legend: { display: false },
                 tooltip: { callbacks: { label: ctx => ` ${fmtMoneda(ctx.parsed.y)}` } },
-                title: { display: true, text: 'Ventas por Tipo de Cobro', font: { size: 14, weight: 'bold' } },
                 datalabels: {
                     display: true,
                     anchor: 'end',
@@ -2150,7 +2150,6 @@ function renderChartsVentas(data, diario) {
             plugins: {
                 legend: { position: 'bottom', labels: { padding: 16, font: { size: 12 } } },
                 tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${fmtMoneda(ctx.parsed)}` } },
-                title: { display: true, text: 'Efectivo vs Depósitos', font: { size: 14, weight: 'bold' } },
                 datalabels: { display: false }
             }
         }
@@ -2174,12 +2173,11 @@ function renderChartsVentas(data, diario) {
                     pointBackgroundColor: '#2563eb'
                 }]
             },
-            options: {
-                responsive: true,
-                plugins: {
+        options: {
+            responsive: true,
+            plugins: {
                     legend: { display: false },
                     tooltip: { callbacks: { label: ctx => ` ${fmtMoneda(ctx.parsed.y)}` } },
-                    title: { display: true, text: 'Evolución Diaria de Ventas', font: { size: 14, weight: 'bold' } },
                     datalabels: { display: false }
                 },
                 scales: {

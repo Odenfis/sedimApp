@@ -376,6 +376,22 @@ en la carpeta `public/`.
   (config chart, scales, plugins, registro).
 - Estado: ✅
 
+**26/08/2026** — Fix títulos de gráficas superpuestos con datalabels
+- **Problema**: los montos de los datalabels (encima de las barras) se mezclaban
+  con el título del gráfico ("Ventas por Tipo de Cobro") renderizado por el plugin
+  `title` de Chart.js dentro del mismo canvas, especialmente con barras altas.
+- **Solución (Opción B)**: títulos como HTML `<h3>` fuera del canvas, eliminando
+  la superposición de forma definitiva.
+  - Títulos movidos a `<h3>` con estilo inline (`font-size: 0.95rem`, `font-weight: 700`,
+    `color: var(--text-color)`) dentro del `.card-simple` de cada gráfico, separados
+    del canvas con `padding-bottom: 8px`.
+  - Plugin `title` eliminado de los 3 charts (barras, dona, evolución).
+  - Canvas de barras: height `180` → `200`; dona: `130` → `160`.
+  - `layout.padding.top: 35` en chart de barras (respiro para datalabels).
+  - Limpieza: `layout.padding` incorrecto removido del chart de evolución.
+- Archivos: `public/dashboard.html`, `public/script.js`.
+- Estado: ✅
+
 ---
 
 ## 7. Próximos pasos
