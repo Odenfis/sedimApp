@@ -1539,19 +1539,28 @@ app.get('/api/reports/ventas-estadistica', isAuthenticated, async (req, res) => 
         return res.status(400).json({ message: 'Empresa no permitida' });
     }
     const turnoInt = parseInt(turno);
-    if (turnoInt !== 1 && turnoInt !== 2) {
-        return res.status(400).json({ message: 'Turno debe ser 1 o 2' });
+    if (turnoInt !== 1 && turnoInt !== 2 && turnoInt !== 0) {
+        return res.status(400).json({ message: 'Turno debe ser 0 (ambos), 1 o 2' });
     }
     try {
         const pool = await getConnection();
-        const result = await pool.request()
-            .input('empresa', sql.Char(40), empresa.trim())
-            .input('turno', sql.Int, turnoInt)
-            .input('dia', sql.Int, parseInt(dia))
-            .input('mes', sql.Int, parseInt(mes))
-            .input('anio', sql.Int, parseInt(anio))
-            .execute('sp_Ventas_estadistica');
-        res.json({ data: result.recordset });
+        const turnos = turnoInt === 0 ? [1, 2] : [turnoInt];
+        const combinado = {};
+        for (const t of turnos) {
+            const result = await pool.request()
+                .input('empresa', sql.Char(40), empresa.trim())
+                .input('turno', sql.Int, t)
+                .input('dia', sql.Int, parseInt(dia))
+                .input('mes', sql.Int, parseInt(mes))
+                .input('anio', sql.Int, parseInt(anio))
+                .execute('sp_Ventas_estadistica');
+            result.recordset.forEach(r => {
+                const key = r.tipo;
+                if (!combinado[key]) combinado[key] = { tipo: r.tipo, tDeposito: r.tDeposito, Soles: 0 };
+                combinado[key].Soles += parseFloat(r.Soles) || 0;
+            });
+        }
+        res.json({ data: Object.values(combinado) });
     } catch (e) {
         console.error('Error en estadística de venta:', e);
         res.status(500).json({ message: 'Error ejecutando estadística de venta' });
@@ -1568,8 +1577,8 @@ app.get('/api/reports/ventas-estadistica/rango', isAuthenticated, async (req, re
         return res.status(400).json({ message: 'Empresa no permitida' });
     }
     const turnoInt = parseInt(turno);
-    if (turnoInt !== 1 && turnoInt !== 2) {
-        return res.status(400).json({ message: 'Turno debe ser 1 o 2' });
+    if (turnoInt !== 1 && turnoInt !== 2 && turnoInt !== 0) {
+        return res.status(400).json({ message: 'Turno debe ser 0 (ambos), 1 o 2' });
     }
     try {
         const pool = await getConnection();
@@ -1578,27 +1587,30 @@ app.get('/api/reports/ventas-estadistica/rango', isAuthenticated, async (req, re
         const diario = [];
         const acumulado = {};
         let totalGeneral = 0;
+        const turnos = turnoInt === 0 ? [1, 2] : [turnoInt];
 
         for (let d = new Date(inicio); d <= fin; d.setDate(d.getDate() + 1)) {
             const diaN = d.getDate();
             const mesN = d.getMonth() + 1;
             const anioN = d.getFullYear();
-            const result = await pool.request()
-                .input('empresa', sql.Char(40), empresa.trim())
-                .input('turno', sql.Int, turnoInt)
-                .input('dia', sql.Int, diaN)
-                .input('mes', sql.Int, mesN)
-                .input('anio', sql.Int, anioN)
-                .execute('sp_Ventas_estadistica');
             const fechaStr = `${String(diaN).padStart(2, '0')}/${String(mesN).padStart(2, '0')}/${anioN}`;
             let totalDia = 0;
-            result.recordset.forEach(r => {
-                const soles = parseFloat(r.Soles) || 0;
-                totalDia += soles;
-                const key = r.tipo;
-                if (!acumulado[key]) acumulado[key] = { tipo: r.tipo, tDeposito: r.tDeposito, Soles: 0 };
-                acumulado[key].Soles += soles;
-            });
+            for (const t of turnos) {
+                const result = await pool.request()
+                    .input('empresa', sql.Char(40), empresa.trim())
+                    .input('turno', sql.Int, t)
+                    .input('dia', sql.Int, diaN)
+                    .input('mes', sql.Int, mesN)
+                    .input('anio', sql.Int, anioN)
+                    .execute('sp_Ventas_estadistica');
+                result.recordset.forEach(r => {
+                    const soles = parseFloat(r.Soles) || 0;
+                    totalDia += soles;
+                    const key = r.tipo;
+                    if (!acumulado[key]) acumulado[key] = { tipo: r.tipo, tDeposito: r.tDeposito, Soles: 0 };
+                    acumulado[key].Soles += soles;
+                });
+            }
             totalGeneral += totalDia;
             diario.push({ fecha: fechaStr, total: totalDia });
         }

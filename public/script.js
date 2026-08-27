@@ -2091,9 +2091,39 @@ function renderChartsVentas(data, diario) {
     if (veChartDona) veChartDona.destroy();
     if (veChartEvolucion) veChartEvolucion.destroy();
 
-    const labels = data.map(r => r.tDeposito);
-    const valores = data.map(r => parseFloat(r.Soles) || 0);
+    // Ordenar por monto descendente para que las barras se vean de mayor a menor
+    // (no afecta a la dona ni a la tabla, que siguen usando `data`).
+    const dataBarras = [...data].sort((a, b) => (parseFloat(b.Soles) || 0) - (parseFloat(a.Soles) || 0));
+    const labels = dataBarras.map(r => r.tDeposito);
+    const valores = dataBarras.map(r => parseFloat(r.Soles) || 0);
     const paleta = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#f97316'];
+
+    // Con varios tipos de cobro (p. ej. "Ambos Turnos") las barras verticales se
+    // comprimen y "se mezclan". Con más de 4 tipos se pasa a barras horizontales,
+    // donde cada tipo es una fila con su nombre legible y sin pisarse.
+    const numTipos = labels.length;
+    const horizontal = numTipos > 4;
+    const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim() || '#1f2937';
+
+    // Alto del contenedor del gráfico adaptado al nº de tipos para dar aire a cada
+    // barra. Se fija en el wrapper (altura explícita) para que Chart.js no entre en
+    // un bucle de crecimiento al usar maintainAspectRatio:false.
+    // En vertical se da más alto con categorías para proporción; en horizontal cada
+    // tipo tiene una fila propia de 44px.
+    const altH = Math.max(200, numTipos * 40);
+    const altV = Math.max(260, numTipos * 85);
+    const wrapDep = document.getElementById('ve-chart-depositos-wrap');
+    if (wrapDep) {
+        wrapDep.style.height = (horizontal ? altH : altV) + 'px';
+    }
+    ctxDep.height = horizontal ? altH : altV;
+
+    // Grosor de barra proporcional: nunca delgada, y no demasiado gruesa en desktop.
+    // En vertical con pocos tipos las barras crecen hasta 50px para dejar espacio a labels;
+    // en horizontal 40px max para que cada fila sea legible.
+    const maxThick = horizontal ? 40 : 50;
+    const barH = horizontal ? 0.75 : 0.45;
+    const catH = horizontal ? 0.9 : 0.7;
 
     veChartDeposit = new Chart(ctxDep, {
         type: 'bar',
@@ -2104,32 +2134,66 @@ function renderChartsVentas(data, diario) {
                 data: valores,
                 backgroundColor: paleta.slice(0, labels.length),
                 borderRadius: 6,
-                maxBarThickness: 80,
-                barPercentage: 0.7,
-                categoryPercentage: 0.8
+                maxBarThickness: maxThick,
+                barPercentage: barH,
+                categoryPercentage: catH
             }]
         },
         options: {
+            indexAxis: horizontal ? 'y' : 'x',
             responsive: true,
-            layout: { padding: { top: 35 } },
+            maintainAspectRatio: false,
+            layout: { padding: horizontal ? { top: 10, right: 60, left: 10 } : { top: 40, right: 10, bottom: 50 } },
             plugins: {
                 legend: { display: false },
-                tooltip: { callbacks: { label: ctx => ` ${fmtMoneda(ctx.parsed.y)}` } },
+                tooltip: { callbacks: { label: ctx => ` ${fmtMoneda(horizontal ? ctx.parsed.x : ctx.parsed.y)}` } },
                 datalabels: {
                     display: true,
-                    anchor: 'end',
-                    align: 'top',
-                    color: getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim() || '#1f2937',
+                    anchor: horizontal ? 'end' : 'end',
+                    align: horizontal ? 'end' : 'top',
+                    offset: horizontal ? 6 : 0,
+                    clamp: true,
+                    color: textColor,
                     font: { weight: 'bold', size: 11 },
                     formatter: v => fmtMoneda(v)
                 }
             },
             scales: {
-                x: {
-                    ticks: { maxRotation: 45, minRotation: 0, font: { size: 11 }, autoSkip: false },
-                    grid: { display: false }
+                x: horizontal ? {
+                    type: 'linear',
+                    beginAtZero: true,
+                    suggestedMax: Math.max(...valores, 100) * 1.3,
+                    ticks: { callback: v => 'S/ ' + v.toLocaleString(), font: { size: 11 } },
+                    grid: { color: 'rgba(0,0,0,0.06)' }
+                } : {
+                    type: 'category',
+                    ticks: { 
+                        maxRotation: 30, 
+                        minRotation: 30, 
+                        font: { size: 10 }, 
+                        autoSkip: false,
+                        align: 'end',
+                        padding: 4,
+                        callback: function(value, index) { const l = labels[index]; return l && l.length > 15 ? l.substring(0, 12) + '…' : l; }
+                    },
+                    grid: { 
+                        display: true, 
+                        color: 'rgba(0,0,0,0.03)', 
+                        drawTicks: true,
+                        tickLength: 8
+                    }
                 },
-                y: {
+                y: horizontal ? {
+                    ticks: { 
+                        font: { size: 11 }, 
+                        autoSkip: false, 
+                        align: 'end',
+                        textAlign: 'right',
+                        padding: 8,
+                        crossAlign: 'far'
+                    },
+                    grid: { display: false }
+                } : {
                     beginAtZero: true,
                     ticks: { callback: v => 'S/ ' + v.toLocaleString() },
                     grid: { color: 'rgba(0,0,0,0.06)' }

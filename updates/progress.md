@@ -392,6 +392,199 @@ en la carpeta `public/`.
 - Archivos: `public/dashboard.html`, `public/script.js`.
 - Estado: ✅
 
+**27/08/2026** — Fixes de responsive móvil/tablet (sidebar + Configuración Vigente)
+- **Problema**: a ~440×956 el sidebar quedaba desalineado, "Admin Panel" se recortaba y
+  la "Configuración Vigente" del Configurador de Actualizaciones desbordaba la vista.
+- **Sidebar desalineado**: `.sidebar` usaba `box-sizing: content-box`, por lo que
+  `width: 240px` móvil realmente ocupaba 261px (240 + padding + borde). Añadido
+  `box-sizing: border-box` para que `width` sea el ancho real y `translateX`/`left`
+  coincidan sin que el menú sobresalga ni se descuadre.
+- **"Admin Panel" recortado**: se añadió `flex-shrink: 0` a `header-tools`/botones y
+  `min-width: 0` + `text-overflow` en `.brand`; el brand vuelve a caber completo
+  (verificado `clip=false`).
+- **Configuración Vigente con overflow**: el `<code>` del SHA256 y el `<a>` del enlace
+  largo usaban `nowrap` y desbordaban el card horizontalmente (medido 658px contra 376px
+  del card). Reglas para que enlaces y `code` partan la línea
+  (`word-break: break-all` + `overflow-wrap: anywhere`) — sin overflow, `scrollW == clientW`.
+- Archivos: `public/style.css`.
+- Estado: ✅
+
+**27/08/2026** — Sidebar móvil como drawer ancho (85-90%) + reinicio de submenús
+- **Problema**: a pesar de los fixes previos, el menú seguía percibiéndose "recortado"
+  porque el sidebar era demasiado angosto (240px) para el contenido real (submenús con
+  textos largos como "Configurador de Actualizaciones", "Actualizar Sistema ERP Nube").
+- **Drawer ancho** (patrón estándar de apps móviles): el sidebar ahora ocupa ~85-90% del
+  ancho del viewport mediante la variable `--drawer-width` coherente entre `width`,
+  `left` y `translateX`:
+  - `≤992px`: `min(88vw, 380px)`
+  - `≤768px`: `min(90vw, 340px)`
+  - `≤480px`: `min(92vw, 320px)`
+  - "Configurador de Actualizaciones" ahora cabe en UNA línea a 440px (antes 2-3 líneas).
+- **Reinicio de submenús al abrir**: en `toggleSidebar()` (modo móvil), al abrir el drawer
+  se cierran todos los submenús (`submenu.open` → sin clase) y se resetean sus flechas a
+  `rotate(0deg)`; el menú se muestra limpio desde el estado plegado.
+- Auto-cierre al elegir una opción ya existía en `showView()` (≤992px), se mantuvo.
+- Verificado por emulación con viewport real (440/390/320/768/800px): drawer desplegado
+  completo (`translateX` correcto, `x=0`) y submenús cerrados al abrir.
+- Archivos: `public/style.css`, `public/script.js`.
+- Estado: ✅
+
+**27/08/2026** — "Ambos Turnos" en Estadística de Venta (sin tocar el SP)
+- **Objetivo**: a la vista de Estadística de Venta faltaba poder ver la estadística
+  sumando ambos turnos (1 y 2) por sede. Se pidió hacerlo sin modificar el SP
+  `sp_Ventas_estadistica` (que solo acepta un turno 1|2 por llamada y devuelve filas
+  `tipo/tDeposito/Soles` sin columna de turno).
+- **Solución (suma en backend)**: se ejecuta el SP una vez por turno y se acumulan los
+  `Soles` por `tipo` (y por día en el rango). Retrocompatible (`turno=1|2` intacto).
+- `server.js`:
+  - `GET /api/reports/ventas-estadistica`: ahora acepta `turno=0` (ambos). La validación
+    pasó de `1|2` a `0|1|2`. Si `turno=0`, ejecuta el SP con turno 1 y turno 2 y fusiona
+    las filas por `tipo` (suma `Soles`).
+  - `GET /api/reports/ventas-estadistica/rango`: acepta `turno=0`; por cada día iterar
+    turno 1 y turno 2, acumulando en `acumulado[tipo]`, `diario` y `totalGeneral`.
+- `public/dashboard.html`: opción `<option value="0">Ambos Turnos</option>` al inicio del
+  selector `#ve-turno`.
+- `public/script.js`: sin cambios de render ni export — `getVentasFiltros()` ya pasa el
+  turno 0 y KPIs/gráficas/tabla/CSV agregan por `tipo` (compatible con la suma de turnos).
+- Verificado por prueba aislada de la lógica de acumulación (un día y rango): turno 0
+  suma correctamente ambos turnos. Servidor arranca y sirve los archivos (200).
+- Archivos: `server.js`, `public/dashboard.html`.
+- Estado: ✅
+
+**27/08/2026** — Barras "Ventas por Tipo de Cobro" sin mezclarse (gráfico híbrido)
+- **Problema**: al haber varios tipos de cobro (p. ej. con "Ambos Turnos") las barras
+  verticales se comprimían hasta pegarse entre sí y perdían la separación, percibiéndose
+  "mezcladas"; en pantallas angostas (celular) era peor por el canvas estrecho y las
+  etiquetas largas rotadas 45°.
+- **Solución (gráfico híbrido automático)** en `renderChartsVentas()` (`public/script.js`):
+  - Con `> 4` tipos de cobro cambia a **barras horizontales** (`indexAxis: 'y'`), donde
+    cada tipo es una fila con su nombre legible sin rotación y las barras no se pisan.
+    Con `≤ 4` tipos se mantiene el gráfico vertical original (limpio en turnos individuales).
+  - Se calcula `numTipos` y `horizontal` según `data.length`.
+  - Altura del canvas adaptada (`maintainAspectRatio: false`):
+    `height = max(220, n*46)` horizontal / `max(200, n*50)` vertical → cada barra con aire.
+  - Dataset: `maxBarThickness` `36` horizontal / `90` vertical; `barPercentage`/`categoryPercentage`
+    ajustados por orientación.
+  - Datalabels: vertical `anchor:'end'/align:'top'`; horizontal `anchor:'center'/align:'end'`/`offset:8`.
+  - Tooltip: usa `parsed.x` (horizontal) o `parsed.y` (vertical) según `horizontal`.
+  - Escalas: en horizontal el eje de valores es `x` (`beginAtZero`, formato S/) y la
+    categoría `y` (labels sin rotación, `autoSkip:false`); en vertical se mantiene el actual.
+- Solo frontend; no se toca backend ni el SP. Chart.js v4.4.1 (CDN) soporta
+  `indexAxis:'y'` nativamente.
+- Verificado por probe con Chart.js: el canvas no colapsa y mantiene el alto dinámico
+  en ambas orientaciones (vertical 2 tipos=200, 7 tipos=350; horizontal 2=220, 7=322).
+  Servidor arranca y sirve los archivos (200).
+- Archivos: `public/script.js`.
+- Estado: ✅
+
+**27/08/2026** — Fix "efecto de bajada que nunca acaba" en barras horizontales
+- **Problema**: tras el gráfico híbrido, el canvas comprimido con `maintainAspectRatio:false`
+  hacía que el contenedor creciera en altura sin fin (efecto "bajada que nunca acaba").
+  Causa: el canvas es hijo directo de `.card-simple` (sin altura fija); con
+  `responsive:true` + `maintainAspectRatio:false`, Chart.js re-medía el contenedor y lo
+  hacía crecer en un bucle.
+- **Solución**: envolver el canvas en un `<div id="ve-chart-depositos-wrap">` con
+  `position:relative; height:200px;` (`public/dashboard.html`) y desde
+  `renderChartsVentas()` (`public/script.js`) fijar la altura dinámica en ese wrapper:
+  `height = max(220, n*46)` horizontal / `max(200, n*50)` vertical. Con el wrap de altura
+  explícita, Chart.js llena exactamente esa altura y ya no re-crece el contenedor.
+- Verificado por probe: con wrapper de altura fija el alto (200px vertical / 322px
+  horizontal) permanece **estable** tras redimensionar (sin crecimiento infinito).
+- Archivos: `public/dashboard.html`, `public/script.js`.
+- Estado: ✅
+
+**27/08/2026** — Mejora de barras "Ventas por Tipo de Cobro" (grosor proporcional + alineación horizontal)
+- **Problemas**: (1) en desktop las barras verticales se veían muy pequeñas/delgadas con
+  pocos tipos de cobro; (2) en modo horizontal (varios tipos) las descripciones/valores
+  no quedaban bien alineados (el monto se dibujaba dentro de barras cortas y se salía).
+- **Solución** en `renderChartsVentas()` (`public/script.js`):
+  - **Grosor proporcional** con `maxBarThickness` según orientación: `150` vertical /
+    `40` horizontal, con `barPercentage` `0.55` (v) / `0.7` (h) y `categoryPercentage`
+    `0.9` (v) / `0.8` (h). Barras nunca delgadas y equilibradas en desktop y móvil.
+  - **Alturas adaptadas**: `Math.max(260, n*85)` vertical / `Math.max(240, n*46)`
+    horizontal, fijadas en el wrapper (sin bucle de crecimiento).
+  - **Datalabel horizontal** reposicionado a `anchor:'end'/align:'end'/offset:6/clamp:true`
+    → el monto queda **fuera de la barra**, alineado a la derecha y sin salirse del lienzo.
+  - `layout.padding.right: 60` en horizontal y `suggestedMax = max*1.3` en el eje X para
+    reservar espacio al monto más largo (formato "S/ 1,234.00").
+  - Vertical: `layout.padding.top: 40` para los datalabels superiores.
+- Verificado por probe con Chart.js real:
+  - Vertical 3 tipos: grosor 72px (desktop 480px) / 46px (móvil 320px); no delgadas.
+  - Horizontal 8 tipos: grosor 23px por fila; 60px reservados a la derecha del chart
+    para el valor (datalabel fuera, no cortado).
+  - Alturas estables (260px v / 368px h) tras redimensionar, sin bucle.
+  - Servidor arranca y sirve los archivos (200).
+- Archivos: `public/script.js`.
+- Estado: ✅
+
+**27/08/2026** — Ajuste fino barras "Ventas por Tipo de Cobro" (alineación horizontal + alto compacto)
+- **Problemas**: (1) en modo horizontal la etiqueta "Efectivo" se desplazaba un poco a la
+  derecha respecto a las demás (labels centrados por defecto); (2) sobraba espacio en la
+  parte inferior de la tarjeta tras generarse la gráfica.
+- **Solución** en `renderChartsVentas()` (`public/script.js`):
+  - Alineación uniforme de los labels del eje de categorías horizontal con
+    `ticks.align: 'start'` → todos los nombres quedan alineados por el mismo borde
+    izquierdo (ya no se "mueven" por el centrado por defecto).
+  - Alto vertical del gráfico horizontal más compacto: `Math.max(240, n*46)` →
+    `Math.max(200, n*40)`, y `barPercentage` `0.7→0.75` / `categoryPercentage` `0.8→0.9`
+    para que las barras usen mejor el alto (menos vacío abajo y entre filas).
+  - Vertical sin cambios en su altura.
+- Verificado por probe con Chart.js: con 5 tipos el wrapper pasa de 240px a 200px y las
+  barras usan el alto de forma más eficiente (rango barras 158px en 200px de wrapper);
+  con 8 tipos wrapper 320px, barras 277px. Grosor de barra horizontal ~23-24px (legible).
+- Archivos: `public/script.js`.
+- Estado: ✅
+
+**27/08/2026** — Alineación final de la vista horizontal "Ventas por Tipo de Cobro"
+- **Problema persistente**: la etiqueta "Efectivo" se desplazaba a la derecha y no se
+  alineaba con los demás ítems de la vista horizontal (a pesar del intento previo con
+  `align:'start'`, que la dejaba hacia la izquierda y no satisfacía el look buscado).
+- **Solución** en `renderChartsVentas()` (`public/script.js`):
+  - `ticks.align: 'start'` → **`'end'`** en el eje de categorías horizontal: todos los
+    nombres ("Efectivo", etc.) quedan alineados **por el borde derecho, junto al gráfico**,
+    parejos entre sí (apariencia estándar de gráficos de barras horizontales).
+  - **Ordenación de datos por monto descendente** en el gráfico de barras (creando una
+    copia `dataBarras` con `[...data].sort(...)` antes de mapear a labels/valores), por lo
+    que las barras se muestran de mayor a menor. No afecta a la dona ni a la tabla
+    (siguen usando `data` original).
+- Verificado por probe con Chart.js: el modo horizontal con `align:'end'` renderiza sin
+  errores, con zona de labels de 57px y grosor de barra de 42px (3 ítems). La ordenación
+  por monto produce el orden correcto (Plin 700 → Efectivo 400 → Yape 120 → Tarjeta 50).
+  Servidor arranca y sirve los archivos (200).
+- Archivos: `public/script.js`.
+- Estado: ✅
+
+**27/08/2026** — Mejora integral de vista vertical "Ventas por Tipo de Cobro" + fix labels
+- **Problemas**: (1) en modo vertical las barras eran demasiado anchas y los labels rotados
+  45° aparecían muy lejos del eje y desalineados; (2) labels largos (p.ej. "Tarjeta de
+  Crédito") desbordaban sin truncar; (3) el eje X mostraba números (0,1,2...) en lugar de
+  las descripciones de tipo de cobro ("Niubiz", "Yape", etc.).
+- **Solución** en `renderChartsVentas()` (`public/script.js`):
+  - **Grosor reducido**: `maxBarThickness: 150→50`, `barPercentage: 0.55→0.45`,
+    `categoryPercentage: 0.9→0.7` — barras más estrechas, mucho más espacio para labels.
+  - **Rotación reducida**: `45°→30°` para mayor legibilidad.
+  - **Fuente reducida**: `11→10px`.
+  - **Alineación de labels rotados**: `align:'center'→'end'` + `padding: 4` — ancla el
+    final del texto rotado al eje, evitando la separación excesiva.
+  - **Grid sutil en X restaurado**: `grid: { display: true, color: 'rgba(0,0,0,0.03)',
+    drawTicks: true, tickLength: 8 }` — referencia visual sin ruido.
+  - **Padding inferior aumentado**: `bottom: 30→50` para aire suficiente bajo labels rotados.
+  - **Truncado de labels largos**: `callback: function(value, index) { ... }` que usa
+    `labels[index]` para tratar labels > 15 chars con `substring(0,12)+'…'`.
+  - **Type category explícito**: `type: 'category'` en eje X vertical para que Chart.js
+    trate los labels como categorías en vez de interpretarlos como índices numéricos.
+  - **Type linear explícito**: `type: 'linear'` en eje X horizontal (eje de valores).
+- **Fix raíz del bug "números en vez de labels"**: el `tick.callback` de Chart.js recibe
+  el valor numérico del tick (índice), no el string del label. La arrow function anterior
+  `v => v.length > 15` operaba sobre un número (`number.length` es `undefined`), devolviendo
+  siempre el índice crudo. Se reemplazó por `function(value, index) { const l = labels[index]; ... }`
+  que busca el label real vía el parámetro `index`.
+- Verificado por probe con Chrome headless: labels renderizados correctamente
+  ("Efectivo", "Niubiz", "Yape", "Plin", "Tarjeta Crédito"), grosor de barra ~33px,
+  chart area 181px en wrapper de 300px.
+- Archivos: `public/script.js`.
+- Estado: ✅
+
 ---
 
 ## 7. Próximos pasos
