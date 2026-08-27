@@ -262,6 +262,7 @@ button {
     /* hueco ícono -> texto (uniforme en todos los niveles) */
     width: var(--sidebar-width);
     background: var(--sidebar-bg);
+    box-sizing: border-box;
     padding: 20px 10px;
     border-right: 1px solid var(--border-color);
     display: flex;
@@ -289,6 +290,8 @@ button {
     font-weight: 800;
     white-space: nowrap;
     overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
     transition: opacity 0.2s;
 }
 
@@ -296,6 +299,12 @@ button {
     display: flex;
     align-items: center;
     gap: 10px;
+    flex-shrink: 0;
+}
+
+.theme-toggle,
+.toggle-btn {
+    flex-shrink: 0;
 }
 
 .toggle-btn {
@@ -399,6 +408,31 @@ button {
     text-align: center;
     font-size: 1.1rem;
     margin-right: var(--sb-gap);
+    flex-shrink: 0;
+}
+
+/* Asegurar que el texto de los ítems envuelva sin recortarse
+   (p. ej. "Configurador de Actualizaciones" en 2 líneas) */
+.sidebar li,
+.sidebar li span,
+.submenu-toggle,
+.submenu-toggle span,
+.submenu-label span {
+    white-space: normal !important;
+    overflow-wrap: break-word;
+    word-break: break-word;
+}
+
+/* Evitar que el texto se comprima y se corte por el overflow del contenedor */
+.sidebar ul > li,
+.sidebar ul > li > span,
+.submenu-toggle div,
+.submenu-label {
+    min-width: 0;
+}
+
+.submenu-toggle .arrow-icon {
+    flex-shrink: 0;
 }
 
 /* Submenu */
@@ -1220,6 +1254,30 @@ form label {
     padding: 15px;
 }
 
+/* Evitar que enlaces largos y SHA256 (código) desborden horizontalmente
+   el card (Configuración Vigente / Configurador de Actualizaciones) */
+.card-simple,
+.card-simple #cfg-vigente {
+    min-width: 0;
+}
+
+.card-simple #cfg-vigente {
+    overflow-wrap: anywhere;
+}
+
+.card-simple #cfg-vigente a,
+.card-simple #cfg-vigente code {
+    white-space: normal;
+    word-break: break-all;
+    overflow-wrap: anywhere;
+}
+
+.card-simple #cfg-vigente code {
+    display: inline-block;
+    max-width: 100%;
+    vertical-align: middle;
+}
+
 /* TOAST CARGO CAJA RESULTADO */
 .cc-toast {
     position: fixed;
@@ -1273,19 +1331,20 @@ form label {
 
 /* --- ≤ 992px: Tablet / Laptop pequeño --- */
 @media (max-width: 992px) {
-    /* Sidebar off-canvas */
+    /* Sidebar off-canvas (drawer ancho) */
     .sidebar {
+        --drawer-width: min(88vw, 380px);
         position: fixed;
         height: 100%;
-        left: calc(-1 * var(--sidebar-width));
+        left: calc(-1 * var(--drawer-width));
         top: 0;
         box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
-        width: var(--sidebar-width) !important;
+        width: var(--drawer-width) !important;
         z-index: 50;
     }
 
     .sidebar.open {
-        transform: translateX(var(--sidebar-width));
+        transform: translateX(var(--drawer-width));
     }
 
     .mobile-menu-btn {
@@ -1406,22 +1465,55 @@ form label {
         padding-top: 60px;
     }
 
-    /* Sidebar más angosta */
+    /* Sidebar más angosta (drawer ancho) */
     .sidebar {
-        width: 260px !important;
+        --drawer-width: min(90vw, 340px);
+        width: var(--drawer-width) !important;
     }
 
     .sidebar.open {
-        transform: translateX(260px);
+        transform: translateX(var(--drawer-width));
     }
 
     .sidebar li {
         font-size: 0.88rem;
     }
 
+    /* Garantizar que los textos largos envuelvan en varias líneas sin recortarse */
+    .sidebar li,
+    .sidebar li span,
+    .submenu-toggle,
+    .submenu-toggle span,
+    .submenu-label span {
+        white-space: normal !important;
+        overflow-wrap: break-word;
+        word-break: break-word;
+    }
+
+    .sidebar li,
+    .submenu-toggle {
+        align-items: flex-start;
+    }
+
     /* Filtros: 1 columna */
     .filter-mini {
         width: 100% !important;
+    }
+
+    /* Botones directos bajo el header de una vista (p. ej. "Nuevo Usuario")
+       se muestran a ancho completo en móvil */
+    .view-section > .btn-save {
+        width: 100%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        margin-bottom: 4px;
+    }
+
+    /* Tarjetas y configurador: usar todo el ancho disponible */
+    .card-simple {
+        max-width: 100% !important;
     }
 
     .filters-container {
@@ -1493,6 +1585,27 @@ form label {
         min-width: 480px;
     }
 
+    /* Tabla de historial del configurador: celdas de enlace/SHA permiten wrap
+       para aprovechar mejor el ancho en tablets */
+    #cfg-historial-table {
+        min-width: 560px;
+    }
+
+    #cfg-historial-table th:nth-child(3),
+    #cfg-historial-table td:nth-child(3) {
+        white-space: normal;
+        word-break: break-all;
+    }
+
+    /* Botones dentro de tarjetas del configurador/actualizador ocupan el ancho */
+    .card-simple .btn-save {
+        width: 100%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+    }
+
     /* Computer grid */
     .computer-item {
         width: 80px;
@@ -1524,13 +1637,19 @@ form label {
         padding-top: 55px;
     }
 
-    /* Sidebar más angosta */
+    /* Sidebar más angosta (drawer ancho) */
     .sidebar {
-        width: 240px !important;
+        --drawer-width: min(92vw, 320px);
+        width: var(--drawer-width) !important;
     }
 
     .sidebar.open {
-        transform: translateX(240px);
+        transform: translateX(var(--drawer-width));
+    }
+
+    /* El brand se ajusta para no recortarse con el header compacto */
+    .sidebar-header .brand {
+        font-size: 1.05rem;
     }
 
     .sidebar li {
@@ -1598,6 +1717,20 @@ form label {
     /* Tablas */
     table {
         min-width: 400px;
+    }
+
+    /* Tabla de historial del configurador: se mantiene con scroll cómodo */
+    #cfg-historial-table {
+        min-width: 520px;
+    }
+
+    /* El botón inline del configurador/actualizador se centra y llena el ancho */
+    .card-simple a.btn-save {
+        width: 100%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
     }
 
     /* Tarjetas de estado */

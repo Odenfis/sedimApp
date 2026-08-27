@@ -227,7 +227,15 @@ function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('mobile-overlay');
     const isMobile = window.innerWidth <= 992;
-    if (isMobile) { sidebar.classList.toggle('open'); overlay.classList.toggle('active'); }
+    if (isMobile) {
+        sidebar.classList.toggle('open');
+        overlay.classList.toggle('active');
+        // Al abrir el drawer en móvil, reiniciar los submenús al estado plegado
+        if (sidebar.classList.contains('open')) {
+            document.querySelectorAll('.submenu.open').forEach(s => s.classList.remove('open'));
+            document.querySelectorAll('.submenu-toggle .arrow-icon').forEach(a => a.style.transform = 'rotate(0deg)');
+        }
+    }
     else {
         sidebar.classList.toggle('collapsed');
         const icon = document.querySelector('.toggle-btn i');
