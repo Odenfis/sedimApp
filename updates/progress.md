@@ -34,6 +34,7 @@ en la carpeta `public/`.
 | Archivos temporales | `tmp` | ^0.2.5 | — |
 | Frontend | HTML + CSS + JavaScript vanilla | — | Sin framework ni build step |
 | Gráficas | Chart.js (CDN) | ^4.4.1 | `dashboard.html` vía `cdn.jsdelivr.net` |
+| Datalabels | chartjs-plugin-datalabels (CDN) | ^2.2.0 | `dashboard.html` vía `cdn.jsdelivr.net` |
 | Repositorio | GitHub | — | `Odenfis/sedimApp`, ramas `main` / `testing` |
 
 **Scripts (`package.json`):**
@@ -100,6 +101,7 @@ en la carpeta `public/`.
 | `sp_aud_Doc_sinDetalle` | Auditoría: documentos sin detalle |
 | `sp_aud_CorrigeCarga` | Auditoría: corrección de carga |
 | `sp_aud_NumFactura` | Auditoría: subida a la nube (validación de numeración por empresa/turno) |
+| `sp_Ventas_estadistica` | Reporte: estadística de ventas por tipo de cobro (empresa, turno, fecha) |
 
 ---
 
@@ -124,6 +126,7 @@ en la carpeta `public/`.
 | **Cierre de Turnos (Operaciones)** | `get /api/operaciones/turnos`, `PUT /api/operaciones/turnos/:id` | ✅ Implementado |
 | **Actualizar Sistema ERP Nube (Herramientas)** | `GET /api/herramientas/actualizar-erp` | ✅ Implementado |
 | **Configurador de Actualizaciones (Admin)** | `GET/POST /api/admin/config-actualizaciones`, generación dinámica del .bat en `/api/herramientas/actualizar-erp` | ✅ Implementado |
+| **Reportes — Estadística de Venta** | `GET /api/reports/ventas-estadistica`, `GET /api/reports/ventas-estadistica/rango` | ✅ Implementado |
 
 ---
 
@@ -288,6 +291,89 @@ en la carpeta `public/`.
 - Modo colapsado intacto (sus overrides `!important` siguen teniendo prioridad);
   sin cambios en HTML ni JS.
 - Archivos: `public/style.css`.
+- Estado: ✅
+
+**26/08/2026** — Nuevo módulo "Estadística de Venta" (Reportes)
+- Objetivo: dashboard visual para el administrador de sedes que resuma ventas por tipo
+  de cobro (Efectivo vs Depósitos) con gráficas interactivas, KPIs y tabla resumen.
+- SP utilizado: `sp_Ventas_estadistica` (empresa char(40), turno int, dia/mes/anio int).
+  Devuelve `tipo`, `tDeposito` (resuelto desde tabla 537) y `Soles` (suma por grupo).
+- Sedes permitidas (tabla 200, n_numero 2/4/6): **Cocineria**, **Mar Picante 1**,
+  **Inversiones Abruzzo Sac** — selector en UI con `c_describe` como valor enviado al SP.
+- Turnos limitados a 1 y 2.
+- Backend (`server.js`):
+  - `GET /api/reports/ventas-estadistica?empresa=&turno=&dia=&mes=&anio=` — ejecuta el SP
+    para un solo día, devuelve `{ data: [{ tipo, tDeposito, Soles }] }`.
+  - `GET /api/reports/ventas-estadistica/rango?empresa=&turno=&fInicio=&fFin=` — itera
+    por cada día del rango, ejecuta el SP por día y agrega resultados: `{ data, diario, totalGeneral }`.
+  - Validación de empresa (white list) y turno (1|2) en ambos endpoints.
+  - Permisos: reutiliza `reportes`.
+- Frontend (`public/dashboard.html`):
+  - Nuevo ítem en submenú Reportes: "Estadística de Venta" (`fa-chart-bar`).
+  - Vista `#view-reporte-ventas-estadistica` con filtros: Sede (select 3 opciones),
+    Turno (1/2), Desde/Hasta (rango de fechas), botones Consultar y Exportar.
+  - 4 tarjetas KPI con iconos: Total Ventas, Efectivo, Depósitos, % Efectivo.
+  - 3 gráficas Chart.js: barras por tipo de cobro, dona efectivo vs depósitos,
+    evolución diaria (se oculta si es un solo día).
+  - Tabla resumen con barra de progreso por tipo y total general.
+- Frontend (`public/script.js`):
+  - `cargarEstadisticaVentas()` — detecta single-day vs rango, llama al endpoint
+    correspondiente y delega render.
+  - `renderKPIsVentas()` — actualiza las 4 tarjetas KPI.
+  - `renderChartsVentas()` — destruye/recrea Chart.js (barras, dona, línea).
+  - `renderTablaVentas()` — tabla dinámica con porcentajes visuales.
+  - `exportarEstadisticaVentas()` — exporta a CSV.
+  - Integración en `showView()` con `setDefaultVentasFechas()`.
+- Frontend (`public/style.css`):
+  - Clases `.ve-kpi-grid`, `.ve-kpi-card`, `.ve-kpi-icon`, `.ve-kpi-label`, `.ve-kpi-value`.
+  - Hover effects en tarjetas KPI (`translateY(-2px)` + shadow).
+  - Responsive: grid de KPIs a 2 columnas en móvil (`≤768px`).
+- **Fix 26/08/2026**: la vista se colocó inicialmente fuera del `<div class="content">`,
+  por lo que `getElementById` no la encontraba. Reposicionada correctamente dentro del
+  contenedor `.content`, al mismo nivel que las demás vistas.
+- Archivos: `server.js`, `public/dashboard.html`, `public/script.js`, `public/style.css`.
+- Estado: ✅
+
+**26/08/2026** — Responsive completo (tablet + móvil)
+- Objetivo: adaptar toda la plataforma a tablets (10 pulgadas) y móviles sin romper
+  el comportamiento en desktop.
+- **login.html**: agregado `<meta name="viewport">` — el login ahora escala correctamente.
+- **Sidebar**: breakpoint 1024px → 992px; off-canvas en ≤992px con overlay, ancho reducido
+  a 260px en ≤768px y 240px en ≤480px; auto-cierre al seleccionar una vista en móvil.
+- **5 breakpoints** (de mayor a menor):
+  - `≤1200px` — Filtros de revisión a 2 columnas
+  - `≤992px` — Sidebar off-canvas, filtros 2×2, modales 85%, KPIs 2 cols (**nuevo**)
+  - `≤768px` — Sidebar 260px, filtros 1 col, modales 95%, charts apilados,
+    overflow-x corregido en `.dashboard-container` (`visible` → `hidden`)
+  - `≤480px` — KPIs 1 col, login compacto, toast ancho completo (**nuevo**)
+  - `≤800px alto` — Modales con `max-height: 95vh`
+- **Modales**: transiciones suaves (85% → 95% → 98%)
+- **Filtros**: progresión `2 por fila → 1 columna` en vez del salto abrupto anterior
+- **Componentes**: paginación con `flex-wrap`, recetas con `flex-wrap`, computer-grid
+  reducido, tablas con `min-width` reducido, toast responsive, botones compactos.
+- **script.js**: `toggleSidebar()` y resize listener usan 992px; `showView()` cierra
+  sidebar automáticamente en ≤992px.
+- Archivos: `public/login.html`, `public/style.css`, `public/script.js`.
+- Estado: ✅
+
+**26/08/2026** — Fix gráfico de barras "Ventas por Tipo de Cobro"
+- **Problema**: las barras se solapaban entre sí al tener pocos tipos de cobro
+  (ej: Cocineria, Turno 2). Causa: `barThickness: 40` fijo sin `barPercentage` ni
+  `categoryPercentage`, provocando que Chart.js agrandara las barras para llenar
+  el espacio disponible.
+- **Solución**:
+  - Dataset: `barThickness: 40` → `maxBarThickness: 80` + `barPercentage: 0.7` +
+    `categoryPercentage: 0.8` (barras con separación del 30%, crecen libremente
+    hasta 80px máximo).
+  - Scales: nuevo `scales.x` con `autoSkip: false`, `maxRotation: 45°`, grid vertical
+    oculto; `scales.y` con grid horizontal sutil (`rgba(0,0,0,0.06)`).
+  - Canvas: height `130` → `180` para más respiro vertical.
+  - Plugin `chartjs-plugin-datalabels@2.2.0` (CDN): muestra monto exacto encima
+    de cada barra (`anchor: 'end'`, `align: 'top'`, bold 11px, se adapta al tema
+    dark/light vía `--text-color`). Registrado globalmente en DOMContentLoaded.
+  - Datalabels desactivado en gráfico de dona y evolución (evitar ruido visual).
+- Archivos: `public/dashboard.html` (CDN + canvas height), `public/script.js`
+  (config chart, scales, plugins, registro).
 - Estado: ✅
 
 ---

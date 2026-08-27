@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 </head>
 
 <body>
@@ -134,6 +135,11 @@
                         <li onclick="showView('cargo-caja-resultado')" data-module="reportes"
                             title="Cargo Caja Resultado">
                             <i class="fas fa-chart-pie"></i> <span>Cargo Caja Resultado</span>
+                        </li>
+                        <!-- NUEVO REPORTE: ESTADÍSTICA DE VENTA -->
+                        <li onclick="showView('reporte-ventas-estadistica')" data-module="reportes"
+                            title="Estadística de Venta">
+                            <i class="fas fa-chart-bar"></i> <span>Estadística de Venta</span>
                         </li>
                     </ul>
                 </li>
@@ -944,6 +950,112 @@
                 <!-- Tarjetas semáforo por documento -->
                 <div id="sub-tarjetas" class="kpi-grid"
                     style="display: none; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;"></div>
+            </div>
+
+            <!-- VISTA: ESTADÍSTICA DE VENTA -->
+            <div id="view-reporte-ventas-estadistica" class="view-section" style="display:none;">
+            <header>
+                <h1><i class="fas fa-chart-bar"></i> Estadística de Venta</h1>
+            </header>
+            <div class="report-top-bar">
+                <div class="report-filters-group">
+                    <div class="filter-mini" style="width: 220px;">
+                        <label>SEDE / EMPRESA</label>
+                        <select id="ve-empresa">
+                            <option value="Cocineria">Cocineria</option>
+                            <option value="Mar Picante 1">Mar Picante 1</option>
+                            <option value="Inversiones Abruzzo Sac">Inversiones Abruzzo Sac</option>
+                        </select>
+                    </div>
+                    <div class="filter-mini" style="width: 140px;">
+                        <label>TURNO</label>
+                        <select id="ve-turno">
+                            <option value="1">Turno 1</option>
+                            <option value="2">Turno 2</option>
+                        </select>
+                    </div>
+                    <div class="filter-mini" style="width: 160px;">
+                        <label>DESDE</label>
+                        <input type="date" id="ve-fecha-inicio">
+                    </div>
+                    <div class="filter-mini" style="width: 160px;">
+                        <label>HASTA</label>
+                        <input type="date" id="ve-fecha-fin">
+                    </div>
+                </div>
+                <div class="report-filters-group">
+                    <button class="btn-save" id="ve-btn-consultar" onclick="cargarEstadisticaVentas()" style="height: 42px;">
+                        <i class="fas fa-search"></i> Consultar
+                    </button>
+                    <button class="btn-save" onclick="exportarEstadisticaVentas()"
+                        style="height: 42px; background: #10b981;">
+                        <i class="fas fa-file-excel"></i> Exportar
+                    </button>
+                </div>
+            </div>
+            <div class="ve-kpi-grid">
+                <div class="kpi-card ve-kpi-card">
+                    <div class="ve-kpi-icon" style="background: rgba(37,99,235,0.1); color: #2563eb;">
+                        <i class="fas fa-dollar-sign"></i>
+                    </div>
+                    <div>
+                        <div class="ve-kpi-label">TOTAL VENTAS</div>
+                        <div id="ve-kpi-total" class="ve-kpi-value" style="color: var(--accent);">S/ 0.00</div>
+                    </div>
+                </div>
+                <div class="kpi-card ve-kpi-card">
+                    <div class="ve-kpi-icon" style="background: rgba(16,185,129,0.1); color: #10b981;">
+                        <i class="fas fa-money-bill-wave"></i>
+                    </div>
+                    <div>
+                        <div class="ve-kpi-label">EFECTIVO</div>
+                        <div id="ve-kpi-efectivo" class="ve-kpi-value" style="color: #10b981;">S/ 0.00</div>
+                    </div>
+                </div>
+                <div class="kpi-card ve-kpi-card">
+                    <div class="ve-kpi-icon" style="background: rgba(245,158,11,0.1); color: #f59e0b;">
+                        <i class="fas fa-university"></i>
+                    </div>
+                    <div>
+                        <div class="ve-kpi-label">DEPÓSITOS</div>
+                        <div id="ve-kpi-depositos" class="ve-kpi-value" style="color: #f59e0b;">S/ 0.00</div>
+                    </div>
+                </div>
+                <div class="kpi-card ve-kpi-card">
+                    <div class="ve-kpi-icon" style="background: rgba(139,92,246,0.1); color: #8b5cf6;">
+                        <i class="fas fa-percentage"></i>
+                    </div>
+                    <div>
+                        <div class="ve-kpi-label">% EFECTIVO</div>
+                        <div id="ve-kpi-pct-efectivo" class="ve-kpi-value" style="color: #8b5cf6;">0%</div>
+                    </div>
+                </div>
+            </div>
+            <div class="charts-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                <div class="card-simple" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 15px;">
+                    <canvas id="ve-chart-depositos" height="180"></canvas>
+                </div>
+                <div class="card-simple" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 15px;">
+                    <canvas id="ve-chart-dona" height="130"></canvas>
+                </div>
+            </div>
+            <div class="card-simple" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+                <canvas id="ve-chart-evolucion" height="80"></canvas>
+            </div>
+            <div class="table-container report-table-container" style="overflow-x: auto; margin-top: 10px;">
+                <table id="ve-tabla" class="ve-table" style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr>
+                            <th style="padding:10px; border:1px solid var(--border-color); background:var(--accent); color:#fff; text-align:left;">TIPO DE COBRO</th>
+                            <th style="padding:10px; border:1px solid var(--border-color); background:var(--accent); color:#fff; text-align:right;">SOLES</th>
+                            <th style="padding:10px; border:1px solid var(--border-color); background:var(--accent); color:#fff; text-align:right;">% DEL TOTAL</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ve-tabla-body">
+                        <tr><td colspan="3" class="empty-state-message">Seleccione filtros y presione Consultar</td></tr>
+                    </tbody>
+                    <tfoot id="ve-tabla-footer"></tfoot>
+                </table>
             </div>
         </div>
     </div>

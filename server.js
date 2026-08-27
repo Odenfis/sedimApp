@@ -1526,5 +1526,92 @@ app.post('/api/cargos/export', isAuthenticated, async (req, res) => {
     }
 });
 
+// =========== REPORTE: ESTADÍSTICA DE VENTA ===========
+const SEDES_VENTAS_PERMITIDAS = ['Cocineria', 'Mar Picante 1', 'Inversiones Abruzzo Sac'];
+
+app.get('/api/reports/ventas-estadistica', isAuthenticated, async (req, res) => {
+    if (!req.session.user.permisos.includes('reportes')) return res.status(403).json({ message: 'Sin permisos' });
+    const { empresa, turno, dia, mes, anio } = req.query;
+    if (!empresa || !turno || !dia || !mes || !anio) {
+        return res.status(400).json({ message: 'Faltan parámetros: empresa, turno, dia, mes, anio' });
+    }
+    if (!SEDES_VENTAS_PERMITIDAS.includes(empresa.trim())) {
+        return res.status(400).json({ message: 'Empresa no permitida' });
+    }
+    const turnoInt = parseInt(turno);
+    if (turnoInt !== 1 && turnoInt !== 2) {
+        return res.status(400).json({ message: 'Turno debe ser 1 o 2' });
+    }
+    try {
+        const pool = await getConnection();
+        const result = await pool.request()
+            .input('empresa', sql.Char(40), empresa.trim())
+            .input('turno', sql.Int, turnoInt)
+            .input('dia', sql.Int, parseInt(dia))
+            .input('mes', sql.Int, parseInt(mes))
+            .input('anio', sql.Int, parseInt(anio))
+            .execute('sp_Ventas_estadistica');
+        res.json({ data: result.recordset });
+    } catch (e) {
+        console.error('Error en estadística de venta:', e);
+        res.status(500).json({ message: 'Error ejecutando estadística de venta' });
+    }
+});
+
+app.get('/api/reports/ventas-estadistica/rango', isAuthenticated, async (req, res) => {
+    if (!req.session.user.permisos.includes('reportes')) return res.status(403).json({ message: 'Sin permisos' });
+    const { empresa, turno, fInicio, fFin } = req.query;
+    if (!empresa || !turno || !fInicio || !fFin) {
+        return res.status(400).json({ message: 'Faltan parámetros: empresa, turno, fInicio, fFin' });
+    }
+    if (!SEDES_VENTAS_PERMITIDAS.includes(empresa.trim())) {
+        return res.status(400).json({ message: 'Empresa no permitida' });
+    }
+    const turnoInt = parseInt(turno);
+    if (turnoInt !== 1 && turnoInt !== 2) {
+        return res.status(400).json({ message: 'Turno debe ser 1 o 2' });
+    }
+    try {
+        const pool = await getConnection();
+        const inicio = new Date(fInicio);
+        const fin = new Date(fFin);
+        const diario = [];
+        const acumulado = {};
+        let totalGeneral = 0;
+
+        for (let d = new Date(inicio); d <= fin; d.setDate(d.getDate() + 1)) {
+            const diaN = d.getDate();
+            const mesN = d.getMonth() + 1;
+            const anioN = d.getFullYear();
+            const result = await pool.request()
+                .input('empresa', sql.Char(40), empresa.trim())
+                .input('turno', sql.Int, turnoInt)
+                .input('dia', sql.Int, diaN)
+                .input('mes', sql.Int, mesN)
+                .input('anio', sql.Int, anioN)
+                .execute('sp_Ventas_estadistica');
+            const fechaStr = `${String(diaN).padStart(2, '0')}/${String(mesN).padStart(2, '0')}/${anioN}`;
+            let totalDia = 0;
+            result.recordset.forEach(r => {
+                const soles = parseFloat(r.Soles) || 0;
+                totalDia += soles;
+                const key = r.tipo;
+                if (!acumulado[key]) acumulado[key] = { tipo: r.tipo, tDeposito: r.tDeposito, Soles: 0 };
+                acumulado[key].Soles += soles;
+            });
+            totalGeneral += totalDia;
+            diario.push({ fecha: fechaStr, total: totalDia });
+        }
+        res.json({
+            data: Object.values(acumulado),
+            diario,
+            totalGeneral
+        });
+    } catch (e) {
+        console.error('Error en rango estadística de venta:', e);
+        res.status(500).json({ message: 'Error ejecutando rango de estadística' });
+    }
+});
+
 //-------FINAL
 app.listen(PORT, () => console.log(`Servidor en puerto ${PORT}`));

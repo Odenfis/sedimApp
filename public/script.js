@@ -32,6 +32,11 @@ let spDebounceTimer;
 //  INICIO
 // ==========================================
 document.addEventListener("DOMContentLoaded", async () => {
+    // Registrar plugin datalabels globalmente
+    if (typeof Chart !== 'undefined' && typeof ChartDataLabels !== 'undefined') {
+        Chart.register(ChartDataLabels);
+    }
+
     const savedTheme = localStorage.getItem('theme') || 'light';
     document.documentElement.setAttribute('data-theme', savedTheme);
     updateIcon(savedTheme);
@@ -185,6 +190,11 @@ function showView(viewName) {
         if (viewName === 'config-actualizaciones') {
             cargarConfigActualizacion();
         }
+
+        if (viewName === 'reporte-ventas-estadistica') {
+            setDefaultVentasFechas();
+            cargarEstadisticaVentas();
+        }
     }
 
     // 4. Activar visualmente el ítem
@@ -198,6 +208,12 @@ function showView(viewName) {
             if (arrow) arrow.style.transform = 'rotate(180deg)';
         }
     }
+
+    // 5. Cerrar sidebar automáticamente en móvil/tablet
+    if (window.innerWidth <= 992) {
+        document.getElementById('sidebar').classList.remove('open');
+        document.getElementById('mobile-overlay').classList.remove('active');
+    }
 }
 
 function toggleSubmenu(element) {
@@ -210,7 +226,7 @@ function toggleSubmenu(element) {
 function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('mobile-overlay');
-    const isMobile = window.innerWidth <= 1024;
+    const isMobile = window.innerWidth <= 992;
     if (isMobile) { sidebar.classList.toggle('open'); overlay.classList.toggle('active'); }
     else {
         sidebar.classList.toggle('collapsed');
@@ -220,7 +236,7 @@ function toggleSidebar() {
     }
 }
 window.addEventListener('resize', () => {
-    if (window.innerWidth > 1024) {
+    if (window.innerWidth > 992) {
         document.getElementById('sidebar').classList.remove('open');
         document.getElementById('mobile-overlay').classList.remove('active');
     }
@@ -1608,6 +1624,11 @@ const MESES_LARGO = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Jul
 let ccChartMensual = null;
 let ccChartTipos = null;
 
+// Variables gráficas Estadística de Venta
+let veChartDeposit = null;
+let veChartDona = null;
+let veChartEvolucion = null;
+
 function fmtMoneda(val) {
     return 'S/ ' + (parseFloat(val) || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -1957,4 +1978,307 @@ async function guardarConfigActualizacion() {
             alert(data.message || 'Error al guardar');
         }
     } catch (e) { console.error(e); alert('Error de conexión'); }
+}
+
+// ==========================================
+//  ESTADÍSTICA DE VENTA
+// ==========================================
+
+function setDefaultVentasFechas() {
+    const today = new Date().toISOString().split('T')[0];
+    const fInicio = document.getElementById('ve-fecha-inicio');
+    const fFin = document.getElementById('ve-fecha-fin');
+    if (fInicio && !fInicio.value) fInicio.value = today;
+    if (fFin && !fFin.value) fFin.value = today;
+}
+
+function getVentasFiltros() {
+    return {
+        empresa: document.getElementById('ve-empresa').value,
+        turno: document.getElementById('ve-turno').value,
+        fInicio: document.getElementById('ve-fecha-inicio').value,
+        fFin: document.getElementById('ve-fecha-fin').value
+    };
+}
+
+async function cargarEstadisticaVentas() {
+    const f = getVentasFiltros();
+    const btn = document.getElementById('ve-btn-consultar');
+    if (!f.fInicio || !f.fFin) { alert('Seleccione rango de fechas'); return; }
+
+    const inicio = new Date(f.fInicio + 'T00:00:00');
+    const fin = new Date(f.fFin + 'T00:00:00');
+    if (fin < inicio) { alert('La fecha fin no puede ser menor que la fecha inicio'); return; }
+
+    const textoBtn = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Consultando...';
+    btn.disabled = true;
+
+    try {
+        const esRango = f.fInicio !== f.fFin;
+        let result;
+
+        if (esRango) {
+            const params = new URLSearchParams({
+                empresa: f.empresa, turno: f.turno,
+                fInicio: f.fInicio, fFin: f.fFin
+            });
+            const res = await fetch(`/api/reports/ventas-estadistica/rango?${params}`);
+            if (!res.ok) throw new Error(res.statusText);
+            result = await res.json();
+        } else {
+            const d = inicio;
+            const params = new URLSearchParams({
+                empresa: f.empresa, turno: f.turno,
+                dia: d.getDate(), mes: d.getMonth() + 1, anio: d.getFullYear()
+            });
+            const res = await fetch(`/api/reports/ventas-estadistica?${params}`);
+            if (!res.ok) throw new Error(res.statusText);
+            const raw = await res.json();
+            result = {
+                data: raw.data || [],
+                diario: [{ fecha: f.fInicio, total: (raw.data || []).reduce((s, r) => s + (parseFloat(r.Soles) || 0), 0) }],
+                totalGeneral: (raw.data || []).reduce((s, r) => s + (parseFloat(r.Soles) || 0), 0)
+            };
+        }
+
+        renderKPIsVentas(result.data, result.totalGeneral);
+        renderChartsVentas(result.data, result.diario);
+        renderTablaVentas(result.data, result.totalGeneral);
+
+    } catch (e) {
+        console.error('Error cargando estadística de venta:', e);
+        alert('Error al consultar la estadística de venta');
+    } finally {
+        btn.innerHTML = textoBtn;
+        btn.disabled = false;
+    }
+}
+
+function renderKPIsVentas(data, totalGeneral) {
+    let efectivo = 0, depositos = 0;
+    data.forEach(r => {
+        const soles = parseFloat(r.Soles) || 0;
+        if (r.tipo === 0) efectivo = soles;
+        else depositos += soles;
+    });
+    const total = efectivo + depositos;
+    const pctEfectivo = total > 0 ? ((efectivo / total) * 100).toFixed(1) : 0;
+
+    document.getElementById('ve-kpi-total').innerText = fmtMoneda(total);
+    document.getElementById('ve-kpi-efectivo').innerText = fmtMoneda(efectivo);
+    document.getElementById('ve-kpi-depositos').innerText = fmtMoneda(depositos);
+    document.getElementById('ve-kpi-pct-efectivo').innerText = pctEfectivo + '%';
+}
+
+function renderChartsVentas(data, diario) {
+    if (typeof Chart === 'undefined') return;
+
+    const ctxDep = document.getElementById('ve-chart-depositos');
+    const ctxDon = document.getElementById('ve-chart-dona');
+    const ctxEvo = document.getElementById('ve-chart-evolucion');
+    if (!ctxDep || !ctxDon || !ctxEvo) return;
+
+    if (veChartDeposit) veChartDeposit.destroy();
+    if (veChartDona) veChartDona.destroy();
+    if (veChartEvolucion) veChartEvolucion.destroy();
+
+    const labels = data.map(r => r.tDeposito);
+    const valores = data.map(r => parseFloat(r.Soles) || 0);
+    const paleta = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#f97316'];
+
+    veChartDeposit = new Chart(ctxDep, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Soles',
+                data: valores,
+                backgroundColor: paleta.slice(0, labels.length),
+                borderRadius: 6,
+                maxBarThickness: 80,
+                barPercentage: 0.7,
+                categoryPercentage: 0.8
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: ctx => ` ${fmtMoneda(ctx.parsed.y)}` } },
+                title: { display: true, text: 'Ventas por Tipo de Cobro', font: { size: 14, weight: 'bold' } },
+                datalabels: {
+                    display: true,
+                    anchor: 'end',
+                    align: 'top',
+                    color: getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim() || '#1f2937',
+                    font: { weight: 'bold', size: 11 },
+                    formatter: v => fmtMoneda(v)
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { maxRotation: 45, minRotation: 0, font: { size: 11 }, autoSkip: false },
+                    grid: { display: false }
+                },
+                y: {
+                    beginAtZero: true,
+                    ticks: { callback: v => 'S/ ' + v.toLocaleString() },
+                    grid: { color: 'rgba(0,0,0,0.06)' }
+                }
+            }
+        }
+    });
+
+    const total = valores.reduce((a, b) => a + b, 0);
+    const efectivoVal = data.filter(r => r.tipo === 0).reduce((s, r) => s + (parseFloat(r.Soles) || 0), 0);
+    const depositoVal = total - efectivoVal;
+    veChartDona = new Chart(ctxDon, {
+        type: 'doughnut',
+        data: {
+            labels: ['Efectivo', 'Depósitos'],
+            datasets: [{
+                data: [efectivoVal, depositoVal],
+                backgroundColor: ['#10b981', '#f59e0b'],
+                borderWidth: 2,
+                borderColor: getComputedStyle(document.documentElement).getPropertyValue('--card-bg').trim() || '#fff'
+            }]
+        },
+        options: {
+            responsive: true,
+            cutout: '60%',
+            plugins: {
+                legend: { position: 'bottom', labels: { padding: 16, font: { size: 12 } } },
+                tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${fmtMoneda(ctx.parsed)}` } },
+                title: { display: true, text: 'Efectivo vs Depósitos', font: { size: 14, weight: 'bold' } },
+                datalabels: { display: false }
+            }
+        }
+    });
+
+    if (diario && diario.length > 1) {
+        const evoLabels = diario.map(d => d.fecha);
+        const evoData = diario.map(d => d.total);
+        veChartEvolucion = new Chart(ctxEvo, {
+            type: 'line',
+            data: {
+                labels: evoLabels,
+                datasets: [{
+                    label: 'Total diario',
+                    data: evoData,
+                    borderColor: '#2563eb',
+                    backgroundColor: 'rgba(37,99,235,0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#2563eb'
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: ctx => ` ${fmtMoneda(ctx.parsed.y)}` } },
+                    title: { display: true, text: 'Evolución Diaria de Ventas', font: { size: 14, weight: 'bold' } },
+                    datalabels: { display: false }
+                },
+                scales: {
+                    y: { beginAtZero: true, ticks: { callback: v => 'S/ ' + v.toLocaleString() } },
+                    x: { ticks: { maxRotation: 45, font: { size: 10 } } }
+                }
+            }
+        });
+        document.getElementById('ve-chart-evolucion').parentElement.style.display = 'block';
+    } else {
+        document.getElementById('ve-chart-evolucion').parentElement.style.display = 'none';
+    }
+}
+
+function renderTablaVentas(data, totalGeneral) {
+    const tbody = document.getElementById('ve-tabla-body');
+    const tfoot = document.getElementById('ve-tabla-footer');
+    if (!tbody) return;
+
+    tbody.innerHTML = '';
+    const total = totalGeneral || data.reduce((s, r) => s + (parseFloat(r.Soles) || 0), 0);
+
+    data.forEach(r => {
+        const soles = parseFloat(r.Soles) || 0;
+        const pct = total > 0 ? ((soles / total) * 100).toFixed(1) : '0.0';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td style="padding:10px; border:1px solid var(--border-color); font-weight:600;">${r.tDeposito}</td>
+            <td style="padding:10px; border:1px solid var(--border-color); text-align:right; font-family:Consolas,monospace; font-weight:bold; color:var(--accent);">${fmtMoneda(soles)}</td>
+            <td style="padding:10px; border:1px solid var(--border-color); text-align:center;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <div style="flex:1; height:8px; background:var(--border-color); border-radius:4px; overflow:hidden;">
+                        <div style="width:${pct}%; height:100%; background:var(--accent); border-radius:4px;"></div>
+                    </div>
+                    <span style="font-size:0.85rem; min-width:45px; text-align:right;">${pct}%</span>
+                </div>
+            </td>`;
+        tbody.appendChild(tr);
+    });
+
+    if (tfoot) {
+        tfoot.innerHTML = `<tr style="font-weight:bold; background:var(--table-header-bg);">
+            <td style="padding:10px; border:1px solid var(--border-color);">TOTAL GENERAL</td>
+            <td style="padding:10px; border:1px solid var(--border-color); text-align:right; font-family:Consolas,monospace; color:var(--accent); font-size:1.05rem;">${fmtMoneda(total)}</td>
+            <td style="padding:10px; border:1px solid var(--border-color); text-align:center;">100%</td>
+        </tr>`;
+    }
+
+    if (data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="empty-state-message"><i class="fas fa-inbox"></i> No hay datos para los filtros seleccionados</td></tr>';
+    }
+}
+
+async function exportarEstadisticaVentas() {
+    const f = getVentasFiltros();
+    if (!f.fInicio || !f.fFin) { alert('Seleccione rango de fechas'); return; }
+
+    try {
+        let result;
+        const esRango = f.fInicio !== f.fFin;
+
+        if (esRango) {
+            const params = new URLSearchParams({
+                empresa: f.empresa, turno: f.turno,
+                fInicio: f.fInicio, fFin: f.fFin
+            });
+            const res = await fetch(`/api/reports/ventas-estadistica/rango?${params}`);
+            if (!res.ok) throw new Error(res.statusText);
+            result = await res.json();
+        } else {
+            const d = new Date(f.fInicio + 'T00:00:00');
+            const params = new URLSearchParams({
+                empresa: f.empresa, turno: f.turno,
+                dia: d.getDate(), mes: d.getMonth() + 1, anio: d.getFullYear()
+            });
+            const res = await fetch(`/api/reports/ventas-estadistica?${params}`);
+            if (!res.ok) throw new Error(res.statusText);
+            const raw = await res.json();
+            result = { data: raw.data || [], totalGeneral: (raw.data || []).reduce((s, r) => s + (parseFloat(r.Soles) || 0), 0) };
+        }
+
+        let csv = 'Tipo de Cobro,Soles,Porcentaje\n';
+        const total = result.totalGeneral || 0;
+        result.data.forEach(r => {
+            const soles = parseFloat(r.Soles) || 0;
+            const pct = total > 0 ? ((soles / total) * 100).toFixed(1) : '0.0';
+            csv += `"${r.tDeposito}",${soles.toFixed(2)},${pct}%\n`;
+        });
+        csv += `"TOTAL GENERAL",${total.toFixed(2)},100%\n`;
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `EstadisticaVenta_${f.empresa}_${f.fInicio}_${f.fFin}.csv`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+
+    } catch (e) {
+        console.error('Error exportando:', e);
+        alert('Error al exportar');
+    }
 }
