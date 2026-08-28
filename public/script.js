@@ -132,6 +132,13 @@ document.addEventListener("DOMContentLoaded", async () => {
         });
     });
 
+    // Actualizar labels del select Turno (Día/Noche) según sede seleccionada
+    const veEmpresa = document.getElementById('ve-empresa');
+    if (veEmpresa) {
+        veEmpresa.addEventListener('change', actualizarTurnoLabels);
+        actualizarTurnoLabels();
+    }
+
 });
 
 // ==========================================
@@ -1991,6 +1998,22 @@ async function guardarConfigActualizacion() {
 // ==========================================
 //  ESTADÍSTICA DE VENTA
 // ==========================================
+
+function actualizarTurnoLabels() {
+    const empresa = document.getElementById('ve-empresa').value;
+    const turnoSelect = document.getElementById('ve-turno');
+    if (!turnoSelect) return;
+    const map = {
+        'Cocineria':               { 1: 'Noche', 2: 'Día' },
+        'Mar Picante 1':           { 1: 'Día',   2: 'Noche' },
+        'Inversiones Abruzzo Sac': { 1: 'Día',   2: 'Noche' }
+    };
+    const labels = map[empresa] || { 1: 'Turno 1', 2: 'Turno 2' };
+    turnoSelect.querySelectorAll('option').forEach(opt => {
+        if (opt.value === '1') opt.textContent = labels[1];
+        else if (opt.value === '2') opt.textContent = labels[2];
+    });
+}
 
 function setDefaultVentasFechas() {
     const today = new Date().toISOString().split('T')[0];
