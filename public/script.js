@@ -2380,32 +2380,19 @@ function renderChartsVentas(data, diario) {
     const valores = dataBarras.map(r => parseFloat(r.Soles) || 0);
     const paleta = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#f97316'];
 
-    // Con varios tipos de cobro (p. ej. "Ambos Turnos") las barras verticales se
-    // comprimen y "se mezclan". Con más de 4 tipos se pasa a barras horizontales,
-    // donde cada tipo es una fila con su nombre legible y sin pisarse.
     const numTipos = labels.length;
-    const horizontal = numTipos > 4;
     const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim() || '#1f2937';
 
-    // Alto del contenedor del gráfico adaptado al nº de tipos para dar aire a cada
-    // barra. Se fija en el wrapper (altura explícita) para que Chart.js no entre en
-    // un bucle de crecimiento al usar maintainAspectRatio:false.
-    // En vertical se da más alto con categorías para proporción; en horizontal cada
-    // tipo tiene una fila propia de 44px.
-    const altH = Math.max(200, numTipos * 40);
-    const altV = Math.max(260, numTipos * 85);
+    // El ranking siempre es horizontal: prioriza nombres legibles y mantiene una fila
+    // estable por tipo de cobro. La altura explícita evita el crecimiento recursivo de
+    // Chart.js al redimensionar con maintainAspectRatio:false.
+    const rankingHeight = Math.max(240, numTipos * 44);
     const wrapDep = document.getElementById('ve-chart-depositos-wrap');
     if (wrapDep) {
-        wrapDep.style.height = (horizontal ? altH : altV) + 'px';
+        wrapDep.style.height = rankingHeight + 'px';
     }
-    ctxDep.height = horizontal ? altH : altV;
-
-    // Grosor de barra proporcional: nunca delgada, y no demasiado gruesa en desktop.
-    // En vertical con pocos tipos las barras crecen hasta 50px para dejar espacio a labels;
-    // en horizontal 40px max para que cada fila sea legible.
-    const maxThick = horizontal ? 40 : 50;
-    const barH = horizontal ? 0.75 : 0.45;
-    const catH = horizontal ? 0.9 : 0.7;
+    ctxDep.height = rankingHeight;
+    const maxValue = Math.max(...valores, 0);
 
     veChartDeposit = new Chart(ctxDep, {
         type: 'bar',
@@ -2416,24 +2403,24 @@ function renderChartsVentas(data, diario) {
                 data: valores,
                 backgroundColor: paleta.slice(0, labels.length),
                 borderRadius: 6,
-                maxBarThickness: maxThick,
-                barPercentage: barH,
-                categoryPercentage: catH
+                maxBarThickness: 34,
+                barPercentage: 0.76,
+                categoryPercentage: 0.9
             }]
         },
         options: {
-            indexAxis: horizontal ? 'y' : 'x',
+            indexAxis: 'y',
             responsive: true,
             maintainAspectRatio: false,
-            layout: { padding: horizontal ? { top: 10, right: 60, left: 10 } : { top: 40, right: 10, bottom: 50 } },
+            layout: { padding: { top: 6, right: 76, bottom: 4, left: 4 } },
             plugins: {
                 legend: { display: false },
-                tooltip: { callbacks: { label: ctx => ` ${fmtMoneda(horizontal ? ctx.parsed.x : ctx.parsed.y)}` } },
+                tooltip: { callbacks: { label: ctx => ` ${fmtMoneda(ctx.parsed.x)}` } },
                 datalabels: {
                     display: true,
-                    anchor: horizontal ? 'end' : 'end',
-                    align: horizontal ? 'end' : 'top',
-                    offset: horizontal ? 6 : 0,
+                    anchor: 'end',
+                    align: 'end',
+                    offset: 6,
                     clamp: true,
                     color: textColor,
                     font: { weight: 'bold', size: 11 },
@@ -2441,44 +2428,27 @@ function renderChartsVentas(data, diario) {
                 }
             },
             scales: {
-                x: horizontal ? {
+                x: {
                     type: 'linear',
                     beginAtZero: true,
-                    suggestedMax: Math.max(...valores, 100) * 1.3,
+                    suggestedMax: Math.max(maxValue * 1.28, 100),
                     ticks: { callback: v => 'S/ ' + v.toLocaleString(), font: { size: 11 } },
                     grid: { color: 'rgba(0,0,0,0.06)' }
-                } : {
-                    type: 'category',
-                    ticks: { 
-                        maxRotation: 30, 
-                        minRotation: 30, 
-                        font: { size: 10 }, 
-                        autoSkip: false,
-                        align: 'end',
-                        padding: 4,
-                        callback: function(value, index) { const l = labels[index]; return l && l.length > 15 ? l.substring(0, 12) + '…' : l; }
-                    },
-                    grid: { 
-                        display: true, 
-                        color: 'rgba(0,0,0,0.03)', 
-                        drawTicks: true,
-                        tickLength: 8
-                    }
                 },
-                y: horizontal ? {
-                    ticks: { 
-                        font: { size: 11 }, 
-                        autoSkip: false, 
+                y: {
+                    ticks: {
+                        font: { size: 11 },
+                        autoSkip: false,
                         align: 'end',
                         textAlign: 'right',
                         padding: 8,
-                        crossAlign: 'far'
+                        crossAlign: 'far',
+                        callback: function(value) {
+                            const label = this.getLabelForValue(value);
+                            return label && label.length > 22 ? label.substring(0, 19) + '…' : label;
+                        }
                     },
                     grid: { display: false }
-                } : {
-                    beginAtZero: true,
-                    ticks: { callback: v => 'S/ ' + v.toLocaleString() },
-                    grid: { color: 'rgba(0,0,0,0.06)' }
                 }
             }
         }
@@ -2487,6 +2457,23 @@ function renderChartsVentas(data, diario) {
     const total = valores.reduce((a, b) => a + b, 0);
     const efectivoVal = data.filter(r => r.tipo === 0).reduce((s, r) => s + (parseFloat(r.Soles) || 0), 0);
     const depositoVal = total - efectivoVal;
+    const efectivoPct = total > 0 ? (efectivoVal / total) * 100 : 0;
+    const depositoPct = total > 0 ? (depositoVal / total) * 100 : 0;
+    const donutPct = document.getElementById('ve-donut-pct');
+    const donutLegend = document.getElementById('ve-donut-legend');
+    if (donutPct) donutPct.textContent = efectivoPct.toFixed(1) + '%';
+    if (donutLegend) {
+        donutLegend.innerHTML = [
+            { label: 'Efectivo', value: efectivoVal, pct: efectivoPct, color: '#10b981' },
+            { label: 'Depósitos', value: depositoVal, pct: depositoPct, color: '#f59e0b' }
+        ].map(item => `
+            <div class="ve-donut-legend-item">
+                <span class="ve-donut-legend-swatch" style="background:${item.color}"></span>
+                <span class="ve-donut-legend-label">${item.label}</span>
+                <span class="ve-donut-legend-value">${fmtMoneda(item.value)}<span>${item.pct.toFixed(1)}%</span></span>
+            </div>`).join('');
+    }
+
     veChartDona = new Chart(ctxDon, {
         type: 'doughnut',
         data: {
@@ -2500,9 +2487,11 @@ function renderChartsVentas(data, diario) {
         },
         options: {
             responsive: true,
-            cutout: '60%',
+            maintainAspectRatio: false,
+            cutout: '70%',
+            rotation: -90,
             plugins: {
-                legend: { position: 'bottom', labels: { padding: 16, font: { size: 12 } } },
+                legend: { display: false },
                 tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${fmtMoneda(ctx.parsed)}` } },
                 datalabels: { display: false }
             }

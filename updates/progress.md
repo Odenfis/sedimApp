@@ -630,6 +630,21 @@ en la carpeta `public/`.
 - Archivo: `public/script.js`.
 - Estado: ✅
 
+**29/08/2026** — Rediseño visual de Estadística de Venta
+
+- El gráfico de tipos de cobro se convirtió en un ranking horizontal permanente,
+  ordenado por monto y con altura estable según la cantidad de categorías. Los nombres
+  largos se abrevian únicamente en el eje; el tooltip conserva la descripción completa.
+- La composición usa dos tercios del ancho para el ranking y un tercio para una dona
+  compacta. La dona muestra el porcentaje de efectivo en el centro y una leyenda HTML
+  con monto y porcentaje de Efectivo/Depósitos.
+- Responsive: proporción 3:2 en tablet, tarjetas apiladas en ≤768px, leyenda de dos
+  columnas en tablet/móvil grande y una columna en ≤480px. Se mantienen KPIs, tabla,
+  evolución, filtros, exportación, endpoints y SP sin cambios.
+- Archivos: `public/dashboard.html`, `public/style.css`, `public/script.js`,
+  `updates/progress.md`.
+- Estado: ✅
+
 ---
 
 ## 7. Próximos pasos

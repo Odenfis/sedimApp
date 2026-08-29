@@ -1899,6 +1899,125 @@ form label {
     border-top: 2px solid var(--accent);
 }
 
+.ve-charts-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+    gap: 15px;
+    margin-bottom: 20px;
+    align-items: stretch;
+}
+
+.ve-chart-card {
+    min-width: 0;
+    padding: 16px 18px;
+}
+
+.ve-chart-title {
+    margin: 0;
+    padding: 0 0 12px;
+    color: var(--text-color);
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.ve-ranking-chart-wrap {
+    position: relative;
+    height: 240px;
+    min-height: 240px;
+}
+
+.ve-chart-card-summary {
+    display: flex;
+    flex-direction: column;
+}
+
+.ve-donut-chart-wrap {
+    position: relative;
+    width: min(100%, 220px);
+    height: 220px;
+    margin: 0 auto;
+}
+
+.ve-donut-center {
+    position: absolute;
+    inset: 50% auto auto 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    pointer-events: none;
+    line-height: 1.15;
+}
+
+.ve-donut-center strong {
+    color: #10b981;
+    font-family: 'Consolas', monospace;
+    font-size: 1.45rem;
+    font-weight: 800;
+}
+
+.ve-donut-center span {
+    margin-top: 3px;
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.ve-donut-legend {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.ve-donut-legend-item {
+    display: grid;
+    grid-template-columns: 10px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    background: var(--bg-color);
+}
+
+.ve-donut-legend-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+}
+
+.ve-donut-legend-label {
+    min-width: 0;
+    color: var(--text-color);
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.ve-donut-legend-value {
+    color: var(--text-secondary);
+    font-family: 'Consolas', monospace;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.ve-donut-legend-value span {
+    display: block;
+    margin-top: 2px;
+    font-family: inherit;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+@media (max-width: 1100px) and (min-width: 769px) {
+    .ve-charts-grid {
+        grid-template-columns: minmax(0, 3fr) minmax(260px, 2fr);
+    }
+}
+
 /* --- ≤ 768px: Móvil grande / iPad mini --- */
 @media (max-width: 768px) {
     .content {
@@ -2021,6 +2140,19 @@ form label {
         grid-template-columns: 1fr !important;
     }
 
+    .ve-chart-card {
+        padding: 15px;
+    }
+
+    .ve-donut-chart-wrap {
+        width: min(100%, 210px);
+        height: 210px;
+    }
+
+    .ve-donut-legend {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     /* Tablas: reducir min-width */
     table {
         min-width: 480px;
@@ -2105,6 +2237,10 @@ form label {
 
     /* KPIs: 1 columna */
     .ve-kpi-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .ve-donut-legend {
         grid-template-columns: 1fr;
     }
 
