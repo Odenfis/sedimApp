@@ -645,6 +645,42 @@ en la carpeta `public/`.
   `updates/progress.md`.
 - Estado: ✅
 
+**29/08/2026** — Corrección de filtros de Estadística de Venta en iPad/tablet
+
+- La barra de filtros dejó de depender de anchos inline y `flex-wrap`: ahora usa una
+  cuadrícula exclusiva de la vista, con cuatro campos en escritorio, distribución 2×2
+  entre 769–1200px y una columna en ≤768px.
+- Los controles, especialmente las fechas nativas de Safari/iPadOS, pueden contraerse
+  sin invadir campos vecinos mediante `min-width/min-inline-size: 0`, ancho máximo y
+  `box-sizing: border-box`. Consultar y Exportar comparten fila en móvil grande y pasan
+  a ancho completo en ≤480px.
+- No se modificaron clases globales de reportes, JavaScript, endpoints ni exportación.
+- Archivos: `public/dashboard.html`, `public/style.css`, `updates/progress.md`.
+- Estado: ✅
+
+**29/08/2026** — Ajuste alternativo para fechas nativas en Safari/iPadOS
+
+- Tras verificar en iPad que el control nativo de fecha aún excedía una columna de la
+  cuadrícula, se descartó compensarlo con recortes o píxeles fijos.
+- En 769–1200px se conservan Sede y Turno en dos columnas, mientras Desde y Hasta usan
+  una fila completa cada uno. Esto mantiene texto, borde e icono nativos dentro de la
+  tarjeta en distintos tamaños y escalas de pantalla.
+- Solo CSS; sin cambios en filtros, eventos, consulta, exportación o backend.
+- Archivos: `public/style.css`, `updates/progress.md`.
+- Estado: ✅
+
+**29/08/2026** — Fechas compactas con margen seguro en iPad/Safari
+
+- Se reemplazaron las fechas a fila completa por el diseño tablet 2×2: Sede/Turno en
+  la primera fila y Desde/Hasta en la segunda.
+- Desde y Hasta usan la clase explícita `.ve-date-filter` y reservan 40px dentro de su
+  columna para absorber la expansión del control nativo de Safari; en ≤480px la reserva
+  baja a 24px. Se retiró el recorte por overflow para conservar el calendario nativo.
+- Los inputs de fecha usan tipografía y padding más compactos, con altura táctil mínima
+  de 42px. Sin cambios en IDs, valores, JavaScript, consulta, exportación o backend.
+- Archivos: `public/dashboard.html`, `public/style.css`, `updates/progress.md`.
+- Estado: ✅
+
 ---
 
 ## 7. Próximos pasos

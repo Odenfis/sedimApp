@@ -991,9 +991,9 @@
             <header>
                 <h1><i class="fas fa-chart-bar"></i> Estadística de Venta</h1>
             </header>
-            <div class="report-top-bar">
-                <div class="report-filters-group">
-                    <div class="filter-mini" style="width: 220px;">
+            <div class="report-top-bar ve-report-top-bar">
+                <div class="report-filters-group ve-filter-grid">
+                    <div class="filter-mini">
                         <label>SEDE / EMPRESA</label>
                         <select id="ve-empresa">
                             <option value="Cocineria">Cocineria</option>
@@ -1001,7 +1001,7 @@
                             <option value="Inversiones Abruzzo Sac">Inversiones Abruzzo Sac</option>
                         </select>
                     </div>
-                    <div class="filter-mini" style="width: 140px;">
+                    <div class="filter-mini">
                         <label>TURNO</label>
                         <select id="ve-turno">
                             <option value="0">Ambos Turnos</option>
@@ -1009,21 +1009,20 @@
                             <option value="2">Día</option>
                         </select>
                     </div>
-                    <div class="filter-mini" style="width: 160px;">
+                    <div class="filter-mini ve-date-filter">
                         <label>DESDE</label>
                         <input type="date" id="ve-fecha-inicio">
                     </div>
-                    <div class="filter-mini" style="width: 160px;">
+                    <div class="filter-mini ve-date-filter">
                         <label>HASTA</label>
                         <input type="date" id="ve-fecha-fin">
                     </div>
                 </div>
-                <div class="report-filters-group">
-                    <button class="btn-save" id="ve-btn-consultar" onclick="cargarEstadisticaVentas()" style="height: 42px;">
+                <div class="report-filters-group ve-filter-actions">
+                    <button class="btn-save" id="ve-btn-consultar" onclick="cargarEstadisticaVentas()">
                         <i class="fas fa-search"></i> Consultar
                     </button>
-                    <button class="btn-save" onclick="exportarEstadisticaVentas()"
-                        style="height: 42px; background: #10b981;">
+                    <button class="btn-save ve-btn-export" onclick="exportarEstadisticaVentas()">
                         <i class="fas fa-file-excel"></i> Exportar
                     </button>
                 </div>

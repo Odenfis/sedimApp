@@ -1840,6 +1840,60 @@ form label {
 }
 
 /* ====== ESTADÍSTICA DE VENTA ====== */
+.ve-report-top-bar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+}
+
+.ve-filter-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.8fr) repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    min-width: 0;
+}
+
+.ve-filter-grid .filter-mini,
+.ve-filter-grid .filter-mini input,
+.ve-filter-grid .filter-mini select {
+    width: 100% !important;
+    min-width: 0;
+    min-inline-size: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.ve-filter-grid .filter-mini input,
+.ve-filter-grid .filter-mini select,
+.ve-filter-actions .btn-save {
+    min-height: 44px;
+}
+
+.ve-filter-grid input[type="date"] {
+    display: block;
+    inline-size: 100%;
+    min-height: 42px;
+    padding: 8px 10px;
+    font-size: 0.9rem;
+}
+
+.ve-filter-actions {
+    flex-wrap: nowrap;
+    align-self: end;
+}
+
+.ve-filter-actions .btn-save {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.ve-btn-export {
+    background: #10b981;
+}
+
 .ve-kpi-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -2018,6 +2072,29 @@ form label {
     }
 }
 
+@media (max-width: 1200px) and (min-width: 769px) {
+    .ve-report-top-bar {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .ve-filter-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        width: 100%;
+    }
+
+    /* Safari/iPadOS puede dibujar el control nativo unos píxeles más ancho que
+       su caja CSS. Este margen interno absorbe esa expansión sin recortar el
+       icono del calendario ni alterar el valor ISO del input. */
+    .ve-date-filter input[type="date"] {
+        width: calc(100% - 40px) !important;
+        inline-size: calc(100% - 40px);
+    }
+
+    .ve-filter-actions {
+        justify-self: start;
+    }
+}
+
 /* --- ≤ 768px: Móvil grande / iPad mini --- */
 @media (max-width: 768px) {
     .content {
@@ -2144,6 +2221,27 @@ form label {
         padding: 15px;
     }
 
+    .ve-report-top-bar,
+    .ve-filter-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .ve-date-filter input[type="date"] {
+        width: calc(100% - 40px) !important;
+        inline-size: calc(100% - 40px);
+    }
+
+    .ve-filter-actions {
+        display: flex;
+        flex-direction: row;
+        align-items: stretch;
+        width: 100%;
+    }
+
+    .ve-filter-actions .btn-save {
+        flex: 1 1 0;
+    }
+
     .ve-donut-chart-wrap {
         width: min(100%, 210px);
         height: 210px;
@@ -2242,6 +2340,19 @@ form label {
 
     .ve-donut-legend {
         grid-template-columns: 1fr;
+    }
+
+    .ve-filter-actions {
+        flex-direction: column;
+    }
+
+    .ve-filter-actions .btn-save {
+        width: 100%;
+    }
+
+    .ve-date-filter input[type="date"] {
+        width: calc(100% - 24px) !important;
+        inline-size: calc(100% - 24px);
     }
 
     .kpi-grid {
