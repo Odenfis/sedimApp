@@ -19,42 +19,61 @@
         <!-- SIDEBAR MENU -->
         <nav class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <!-- 1. Texto a la izquierda -->
-                <div class="brand">Admin Panel</div>
+                <div class="brand">
+                    <span class="brand-name">Sedimcorp</span>
+                    <span class="brand-subtitle">Panel de administración</span>
+                </div>
 
-                <!-- 2. Herramientas a la derecha (Luna + Hamburguesa) -->
                 <div class="header-tools">
-                    <button class="theme-toggle" onclick="toggleTheme()" title="Cambiar Tema">
+                    <button class="theme-toggle" type="button" onclick="toggleTheme()" title="Cambiar tema"
+                        aria-label="Cambiar tema">
                         <i class="fas fa-sun" id="theme-icon"></i>
                     </button>
 
-                    <button class="toggle-btn" onclick="toggleSidebar()" title="Colapsar Menú">
+                    <button class="toggle-btn" type="button" onclick="toggleSidebar()" title="Contraer menú"
+                        aria-label="Contraer menú">
                         <i class="fas fa-bars"></i>
                     </button>
                 </div>
             </div>
 
-            <ul>
-                <!-- AGREGADOS data-module para control de permisos robusto -->
-                <li onclick="showView('equipos')" class="active" data-module="equipos" title="Control de Equipos">
-                    <i class="fas fa-desktop"></i> <span>Control de Equipos</span>
-                </li>
-                <li onclick="showView('usuarios')" data-module="usuarios" title="Usuarios Sistema">
-                    <i class="fas fa-users"></i> <span>Usuarios Sistema</span>
-                </li>
-                <!-- NUEVA OPCIÓN: CONFIGURADOR DE ACTUALIZACIONES (SOLO ROL ADMINISTRADOR) -->
-                <li onclick="showView('config-actualizaciones')" data-module="config_actualizaciones"
-                    title="Configurador de Actualizaciones">
-                    <i class="fas fa-arrows-rotate"></i> <span>Configurador de Actualizaciones</span>
-                </li>
-                <!-- NUEVO MENÚ HERRAMIENTAS -->
-                <li class="has-submenu" data-module="herramientas">
-                    <div class="submenu-toggle" onclick="toggleSubmenu(this)" title="Herramientas">
+            <div class="sidebar-search">
+                <label class="sr-only" for="sidebar-search-input">Buscar módulo</label>
+                <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
+                <input id="sidebar-search-input" type="search" placeholder="Buscar módulo" autocomplete="off">
+                <button id="sidebar-search-clear" type="button" aria-label="Limpiar búsqueda" title="Limpiar búsqueda">
+                    <i class="fas fa-xmark" aria-hidden="true"></i>
+                </button>
+            </div>
+
+            <div class="sidebar-nav" aria-label="Navegación principal">
+                <section class="nav-section" data-nav-section="administracion">
+                    <p class="nav-section-title">Administración</p>
+                    <ul class="nav-list">
+                        <li onclick="showView('equipos')" class="active" data-module="equipos" title="Control de Equipos">
+                            <i class="fas fa-desktop"></i> <span>Control de Equipos</span>
+                        </li>
+                        <li onclick="showView('usuarios')" data-module="usuarios" title="Usuarios Sistema">
+                            <i class="fas fa-users"></i> <span>Usuarios Sistema</span>
+                        </li>
+                        <li onclick="showView('config-actualizaciones')" data-module="config_actualizaciones"
+                            title="Configurador de Actualizaciones">
+                            <i class="fas fa-arrows-rotate"></i> <span>Configurador de Actualizaciones</span>
+                        </li>
+                    </ul>
+                </section>
+
+                <section class="nav-section" data-nav-section="operacion">
+                    <p class="nav-section-title">Operación</p>
+                    <ul class="nav-list">
+                        <li class="has-submenu" data-module="herramientas">
+                            <button class="submenu-toggle" type="button" onclick="toggleSubmenu(this)"
+                                title="Herramientas" aria-expanded="false">
                         <div class="submenu-label">
                             <i class="fas fa-toolbox"></i> <span>Herramientas</span>
                         </div>
                         <i class="fas fa-chevron-down arrow-icon"></i>
-                    </div>
+                            </button>
                     <ul class="submenu">
                         <li onclick="showView('precios')" data-module="precios" title="Cambio de Precios">
                             <i class="fas fa-tags"></i> <span>Cambio de Precios</span>
@@ -68,14 +87,15 @@
                             <i class="fas fa-cloud-arrow-down"></i> <span>Actualizar Sistema ERP Nube</span>
                         </li>
                     </ul>
-                </li>
-                <li class="has-submenu" data-module="operaciones">
-                    <div class="submenu-toggle" onclick="toggleSubmenu(this)" title="Operaciones">
+                        </li>
+                        <li class="has-submenu" data-module="operaciones">
+                            <button class="submenu-toggle" type="button" onclick="toggleSubmenu(this)"
+                                title="Operaciones" aria-expanded="false">
                         <div class="submenu-label">
                             <i class="fas fa-cogs"></i> <span>Operaciones</span>
                         </div>
                         <i class="fas fa-chevron-down arrow-icon"></i>
-                    </div>
+                            </button>
                     <ul class="submenu">
                         <li onclick="showView('prod-almacen')" title="Productos Almacén">
                             <i class="fas fa-boxes"></i> <span>Productos Almacén</span>
@@ -89,15 +109,21 @@
                             <i class="fas fa-clock-rotate-left"></i> <span>Cierre de Turnos</span>
                         </li>
                     </ul>
-                </li>
-                <!-- MÓDULO AUDITORÍA -->
-                <li class="has-submenu" data-module="auditoria">
-                    <div class="submenu-toggle" onclick="toggleSubmenu(this)" title="Auditoría">
+                        </li>
+                    </ul>
+                </section>
+
+                <section class="nav-section" data-nav-section="control">
+                    <p class="nav-section-title">Control</p>
+                    <ul class="nav-list">
+                        <li class="has-submenu" data-module="auditoria">
+                            <button class="submenu-toggle" type="button" onclick="toggleSubmenu(this)"
+                                title="Auditoría" aria-expanded="false">
                         <div class="submenu-label">
                             <i class="fas fa-shield-halved"></i> <span>Auditoría</span>
                         </div>
                         <i class="fas fa-chevron-down arrow-icon"></i>
-                    </div>
+                            </button>
                     <ul class="submenu">
                         <li onclick="showView('tickets-no-pagados')" title="Tickets No Pagados">
                             <i class="fas fa-receipt"></i> <span>Tickets No Pagados</span>
@@ -111,14 +137,15 @@
                             <i class="fas fa-cloud-arrow-up"></i> <span>Auditoria Subida Nube</span>
                         </li>
                     </ul>
-                </li>
-                <li class="has-submenu" data-module="reportes">
-                    <div class="submenu-toggle" onclick="toggleSubmenu(this)" title="Reportes">
+                        </li>
+                        <li class="has-submenu" data-module="reportes">
+                            <button class="submenu-toggle" type="button" onclick="toggleSubmenu(this)"
+                                title="Reportes" aria-expanded="false">
                         <div class="submenu-label">
                             <i class="fas fa-chart-line"></i> <span>Reportes</span>
                         </div>
                         <i class="fas fa-chevron-down arrow-icon"></i>
-                    </div>
+                            </button>
                     <ul class="submenu">
                         <li onclick="showView('reportes-salida')" title="Salida Insumos">
                             <i class="fas fa-file-export"></i> <span>Salida Insumos</span>
@@ -142,18 +169,23 @@
                             <i class="fas fa-chart-bar"></i> <span>Estadística de Venta</span>
                         </li>
                     </ul>
-                </li>
-            </ul>
+                        </li>
+                    </ul>
+                </section>
+            </div>
 
             <div class="sidebar-footer">
-                <li onclick="logout()" class="logout-btn" title="Cerrar Sesión">
+                <button type="button" onclick="logout()" class="logout-btn" title="Cerrar sesión">
                     <i class="fas fa-sign-out-alt"></i> <span>Cerrar Sesión</span>
-                </li>
+                </button>
             </div>
         </nav>
 
+        <div id="sidebar-flyout" class="sidebar-flyout" aria-hidden="true"></div>
+
         <div class="content">
-            <button class="mobile-menu-btn" onclick="toggleSidebar()">
+            <button class="mobile-menu-btn" type="button" onclick="toggleSidebar()" aria-label="Abrir menú"
+                title="Abrir menú">
                 <i class="fas fa-bars"></i>
             </button>
 
