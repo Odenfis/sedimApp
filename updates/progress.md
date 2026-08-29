@@ -61,9 +61,11 @@ en la carpeta `public/`.
   (verifica `req.session.user`) y permisos de módulo.
 - **Conexión a BD** centralizada en `db.js` (`getConnection`, `sql`) con configuración
   desde `.env` (`DB_USER`, `DB_PASS`, `DB_SERVER`, `DB_NAME`, `SESSION_SECRET`).
-- **Autorización**: los permisos por rol se cargan al iniciar sesión desde
+- **Autorización y alcance**: los permisos por rol se cargan al iniciar sesión desde
   `Roles_Permisos` + `Modulos` y se guardan en sesión como arreglo de claves
-  (`permisos`), consultado en cada endpoint para control de acceso.
+  (`permisos`). La sesión también carga las empresas activas permitidas desde
+  `Usuarios_Empresas` + `Empresas_Acceso`; cada endpoint empresarial valida ambos
+  niveles en el servidor antes de consultar, modificar o exportar datos.
 
 ---
 
@@ -92,6 +94,8 @@ en la carpeta `public/`.
 | `Recetas` | Recetas de productos (ingredientes) |
 | `CtaProveedor` | Cuentas por pagar de proveedores |
 | `Actualizaciones_ERP` | Historial del Configurador de Actualizaciones (enlace Drive, SHA256, nota, activo) |
+| `Empresas_Acceso` | Catálogo de equivalencias empresariales para el alcance web (productos, caja y ventas). |
+| `Usuarios_Empresas` | Relación activa entre usuarios y las empresas que pueden consultar u operar. |
 
 ### Store procedures
 
@@ -109,16 +113,16 @@ en la carpeta `public/`.
 
 | Módulo | Endpoints clave | Estado |
 |--------|-----------------|--------|
-| **Login / Sesión** | `POST /api/login`, `POST /api/logout`, `GET /api/session`, `GET /api/roles` | ✅ Implementado |
-| **Usuarios** | `GET/POST/DELETE /api/users` | ✅ Implementado |
+| **Login / Sesión** | `POST /api/login`, `POST /api/logout`, `GET /api/session`, `GET /api/roles`, `GET /api/empresas-permitidas` | ✅ Implementado; sesión incluye empresas autorizadas |
+| **Usuarios** | `GET/POST/PATCH/DELETE /api/users`, `PATCH /api/users/:id/estado` | ✅ Implementado; administrador asigna rol, empresas y estado |
 | **Control de Equipos** | `GET /api/structure`, CRUD `/api/equipos`, `/api/sedes` | ✅ Implementado |
-| **Cambio de Precios (IGV)** | `GET/PUT /api/precios/:empresa\|:codpro` | ✅ Implementado (factor IGVV dinámico) |
+| **Cambio de Precios (IGV)** | `GET/PUT /api/precios/:empresa\|:codpro` | ✅ Implementado (factor IGVV dinámico + alcance por empresa) |
 | **Revisión Datos en la Nube** | `POST /api/revision-nube` | ✅ Implementado |
 | **Validación de Seguridad** | `POST /api/validate-password` | ✅ Implementado |
 | **Productos Almacén (Operaciones)** | `get /api/productos/*` (listas, clases, buscar, nuevo-codigo, CRUD) | ✅ Implementado |
-| **Reportes — Salida Insumos** | `POST /api/reports/salida-insumos` (+`/export`) | ✅ Implementado |
-| **Reportes — Cargos de Caja** | `POST /api/reports/cargos-caja` (+`/export`) | ✅ Implementado |
-| **Cargo Caja Resultado (Dashboard + Matriz)** | `POST /api/cargos/dashboard`, `/api/cargos/detalle`, `/api/cargos/export` | ✅ Implementado |
+| **Reportes — Salida Insumos** | `POST /api/reports/salida-insumos` (+`/export`) | ✅ Implementado con alcance por empresa |
+| **Reportes — Cargos de Caja** | `POST /api/reports/cargos-caja` (+`/export`) | ✅ Implementado con alcance por empresa |
+| **Cargo Caja Resultado (Dashboard + Matriz)** | `POST /api/cargos/dashboard`, `/api/cargos/detalle`, `/api/cargos/export` | ✅ Implementado con alcance por empresa |
 | **Reportes — Saldo Proveedores** | `POST /api/reports/saldo-proveedores` (+`/export`) | ✅ Implementado |
 | **Gestión de Claves (Admin)** | `GET/PUT /api/admin/claves` | ✅ Implementado |
 | **Recetas** | `GET/POST /api/recetas`, búsqueda de productos/insumos | ✅ Implementado |
@@ -126,7 +130,7 @@ en la carpeta `public/`.
 | **Cierre de Turnos (Operaciones)** | `get /api/operaciones/turnos`, `PUT /api/operaciones/turnos/:id` | ✅ Implementado |
 | **Actualizar Sistema ERP Nube (Herramientas)** | `GET /api/herramientas/actualizar-erp` | ✅ Implementado |
 | **Configurador de Actualizaciones (Admin)** | `GET/POST /api/admin/config-actualizaciones`, generación dinámica del .bat en `/api/herramientas/actualizar-erp` | ✅ Implementado |
-| **Reportes — Estadística de Venta** | `GET /api/reports/ventas-estadistica`, `GET /api/reports/ventas-estadistica/rango` | ✅ Implementado |
+| **Reportes — Estadística de Venta** | `GET /api/reports/ventas-estadistica`, `GET /api/reports/ventas-estadistica/rango` | ✅ Implementado con alcance por empresa |
 
 ---
 
@@ -585,11 +589,55 @@ en la carpeta `public/`.
 - Archivos: `public/script.js`.
 - Estado: ✅
 
+**28/08/2026** — Roles estándar y alcance seguro por empresa
+
+- Se añadieron los scripts idempotentes `sql/setup_roles_empresa.sql` y
+  `sql/verificacion_roles_empresa.sql`. El primero crea exclusivamente las nuevas tablas
+  `Empresas_Acceso` y `Usuarios_Empresas`, registra Supervisor y fija las plantillas de
+  permisos: Operador (Herramientas/Operaciones) y Supervisor
+  (Herramientas/Operaciones/Reportes). No modifica columnas ni registros de las tablas
+  operativas.
+- La sesión carga las empresas activas autorizadas. El backend centraliza la comprobación
+  de módulo y empresa y la aplica en Productos, Precios, Revisión de Nube, Recetas,
+  Salida de Insumos, Cargos de Caja, Cargo Caja Resultado y Estadística de Venta,
+  incluyendo exportaciones. Una empresa manipulada fuera del alcance responde 403.
+- Saldo de Proveedores y Cierre de Turnos se restringieron a Administrador porque aún no
+  disponen de una dimensión empresarial comprobada.
+- Usuarios del Sistema permite al Administrador crear, editar, desactivar/reactivar y eliminar usuarios con
+  rol estándar y empresas asignadas; los roles restringidos requieren al menos una
+  empresa. La desactivación usa las asignaciones empresariales y bloquea el inicio de
+  sesión de Operador/Supervisor hasta reactivarlos. Los selectores del frontend se
+  limitan al alcance de sesión y se fijan cuando existe una sola empresa autorizada.
+- Verificación estática: `node --check server.js`, `node --check public/script.js` y
+  `git diff --check` correctos. La ejecución contra Azure SQL queda pendiente de la
+  migración controlada por el administrador.
+
+**28/08/2026** — Refinamiento del modal de Usuarios del Sistema
+
+- Se reorganizó el formulario de alta y edición con campos agrupados, cierre accesible,
+  controles de 44 px y un botón de acción de ancho completo.
+- Las empresas se presentan como filas seleccionables completas —en vez de una columna
+  de checks desalineados— y el formulario explica si la asignación es obligatoria para
+  Operador/Supervisor u opcional para Administrador.
+- Archivo: `public/dashboard.html`, `public/style.css`, `public/script.js`.
+- Estado: ✅
+
+**28/08/2026** — Carga inicial de Cambio de Precios por empresa asignada
+
+- Al abrir Cambio de Precios se consulta automáticamente la empresa seleccionada. Esto
+  cubre el caso de Operador/Supervisor con una sola empresa, cuyo selector queda fijado
+  y no emite un cambio manual.
+- Archivo: `public/script.js`.
+- Estado: ✅
+
 ---
 
 ## 7. Próximos pasos
 
-> (Pendiente — se completará con las próximas mejoras del proyecto.)
+1. Ejecutar `sql/setup_roles_empresa.sql` en Azure SQL y conservar su salida como evidencia de migración.
+2. Ejecutar `sql/verificacion_roles_empresa.sql`; antes de habilitar usuarios restringidos, su consulta de "sin empresa" debe quedar vacía y las equivalencias de `Tablas(200)` deben aparecer como `OK`.
+3. Asignar empresas a cada Operador/Supervisor desde Usuarios del Sistema y pedirles volver a iniciar sesión para renovar su alcance.
+4. Realizar pruebas funcionales por rol, incluidas peticiones alteradas con empresas no asignadas (deben devolver 403).
 
 _(en blanco)_
 
@@ -603,3 +651,5 @@ _(en blanco)_
 - La autenticación usa sesiones en memoria (no persistidas): reiniciar el servidor
   cierra todas las sesiones; considerar `connect-session-store` para producción.
 - No existen tests ni linter configurados en `package.json` (a mejorar).
+- La migración de roles y empresas está preparada en `sql/`, pero no se ha ejecutado
+  desde este entorno contra Azure SQL; los pasos de activación permanecen en la sección 7.

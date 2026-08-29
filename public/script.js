@@ -104,7 +104,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         else {
             const data = await res.json();
             const user = data.user;
-            aplicarPermisos(user.permisos);
+            aplicarPermisos(user.permisos, user.rol);
+            aplicarAlcanceEmpresas(user.empresas || []);
             if (user.permisos.includes('equipos')) fetchData();
             if (user.permisos.includes('usuarios')) { loadUsers(); loadRolesSelect(); }
             if (user.permisos.includes('reportes')) {
@@ -146,7 +147,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 // ==========================================
 //  NAVEGACIÓN
 // ==========================================
-function aplicarPermisos(permisos) {
+function aplicarPermisos(permisos, rol = '') {
     const menuItems = document.querySelectorAll('.sidebar li[data-module]');
     menuItems.forEach(item => item.classList.add('permission-hidden'));
 
@@ -159,7 +160,38 @@ function aplicarPermisos(permisos) {
         if (permisosUsuario.includes(mod)) item.classList.remove('permission-hidden');
     });
 
+    document.querySelectorAll('[data-admin-only]').forEach(item => {
+        const admin = String(rol).trim().toLowerCase() === 'administrador';
+        item.hidden = !admin;
+        item.classList.toggle('permission-hidden', !admin);
+    });
+
     updateSidebarSectionVisibility();
+}
+
+function aplicarAlcanceEmpresas(empresas) {
+    const codigos = new Set(empresas.map(e => String(e.codigo_producto)));
+    const ventas = new Set(empresas.map(e => String(e.nombre_ventas)));
+    const selectsPorCodigo = ['empresa-select', 'rev-empresa', 'prod-filter-empresa', 'rec-filter-empresa', 'rep-empresa', 'p-empresa-gen'];
+
+    selectsPorCodigo.forEach(id => {
+        const select = document.getElementById(id);
+        if (!select) return;
+        [...select.options].forEach(option => {
+            if (option.value) option.hidden = !codigos.has(option.value);
+        });
+        const primera = [...select.options].find(option => option.value && codigos.has(option.value));
+        if (primera && (!codigos.has(select.value) || select.selectedOptions[0]?.hidden)) select.value = primera.value;
+        if (empresas.length === 1) select.disabled = true;
+    });
+
+    const ventasSelect = document.getElementById('ve-empresa');
+    if (ventasSelect) {
+        [...ventasSelect.options].forEach(option => { if (option.value) option.hidden = !ventas.has(option.value); });
+        const primera = [...ventasSelect.options].find(option => option.value && ventas.has(option.value));
+        if (primera && !ventas.has(ventasSelect.value)) ventasSelect.value = primera.value;
+        if (empresas.length === 1) ventasSelect.disabled = true;
+    }
 }
 
 function updateSidebarSectionVisibility() {
@@ -320,6 +352,7 @@ function showView(viewName) {
         target.style.display = 'block';
 
         // --- LÓGICA DE CARGA SEGÚN LA VISTA ---
+        if (viewName === 'precios') cargarProductosPrecios();
         if (viewName === 'prod-almacen') buscarProductos();
 
         if (viewName === 'cierre-turnos') {
@@ -815,14 +848,93 @@ if (document.getElementById("sede-form")) {
 async function deleteSede(id) { if (confirm("¿Eliminar sede?")) { await fetch(`/api/sedes/${id}`, { method: 'DELETE' }); document.getElementById("modal-sede").style.display = "none"; fetchData(); } }
 
 async function loadUsers() {
-    try { const res = await fetch('/api/users'); if (!res.ok) return; const users = await res.json(); const tbody = document.querySelector('#users-table tbody'); if (!tbody) return; tbody.innerHTML = ''; users.forEach(u => { const tr = document.createElement('tr'); tr.innerHTML = `<td>${u.id}</td><td>${u.usuario}</td><td>${u.nombre}</td><td><span style="background:var(--accent); color:white; padding:2px 6px; border-radius:4px; font-size:0.8rem;">${u.rol || 'N/A'}</span></td><td><button class="btn-delete" style="padding:5px 10px;" onclick="deleteUser(${u.id})">Eliminar</button></td>`; tbody.appendChild(tr); }); } catch (e) { console.error(e); }
+    try {
+        const res = await fetch('/api/users'); if (!res.ok) return;
+        const users = await res.json(); const tbody = document.querySelector('#users-table tbody'); if (!tbody) return;
+        tbody.innerHTML = '';
+        usuariosSistema = users;
+        users.forEach(u => {
+            const tr = document.createElement('tr');
+            const esAdmin = String(u.rol || '').trim().toLowerCase() === 'administrador';
+            const estado = u.activo ? 'Activo' : 'Inactivo';
+            const accionEstado = esAdmin ? '' : ` <button class="btn-save" style="padding:5px 10px;" onclick="cambiarEstadoUsuario(${u.id}, ${u.activo ? 'false' : 'true'})">${u.activo ? 'Desactivar' : 'Reactivar'}</button>`;
+            tr.innerHTML = `<td>${u.id}</td><td>${u.usuario}</td><td>${u.nombre}</td><td><span style="background:var(--accent); color:white; padding:2px 6px; border-radius:4px; font-size:0.8rem;">${u.rol || 'N/A'}</span></td><td>${u.empresas || '—'}</td><td>${estado}</td><td><button class="btn-save" style="padding:5px 10px;" onclick="openUserModalById(${u.id})">Editar</button>${accionEstado} <button class="btn-delete" style="padding:5px 10px;" onclick="deleteUser(${u.id})">Eliminar</button></td>`;
+            tbody.appendChild(tr);
+        });
+    } catch (e) { console.error(e); }
 }
-async function loadRolesSelect() { try { const res = await fetch('/api/roles'); if (!res.ok) return; const roles = await res.json(); const select = document.getElementById('u-rol'); if (!select) return; select.innerHTML = ''; roles.forEach(r => { const opt = document.createElement('option'); opt.value = r.id; opt.innerText = r.nombre; select.appendChild(opt); }); } catch (e) { console.error(e); } }
-function openUserModal() { document.getElementById('modal-user').style.display = 'block'; }
+let rolesSistema = [];
+let empresasSistema = [];
+let usuariosSistema = [];
+async function loadRolesSelect() {
+    try {
+        const [rolesRes, empresasRes] = await Promise.all([fetch('/api/roles'), fetch('/api/empresas-permitidas')]);
+        if (!rolesRes.ok || !empresasRes.ok) return;
+        rolesSistema = await rolesRes.json(); empresasSistema = await empresasRes.json();
+        const select = document.getElementById('u-rol'); if (!select) return;
+        select.innerHTML = rolesSistema.map(r => `<option value="${r.id}">${r.nombre}</option>`).join('');
+        renderEmpresasUsuario([]);
+    } catch (e) { console.error(e); }
+}
+function renderEmpresasUsuario(seleccionadas) {
+    const list = document.getElementById('u-empresas-list'); if (!list) return;
+    const seleccion = new Set(seleccionadas.map(String));
+    list.innerHTML = empresasSistema.map(e => `<label class="empresa-option"><input type="checkbox" name="u-empresa" value="${e.id}" ${seleccion.has(String(e.id)) ? 'checked' : ''}><span>${e.nombre_visible}</span></label>`).join('');
+}
+function actualizarAyudaEmpresas() {
+    const select = document.getElementById('u-rol');
+    const help = document.getElementById('u-empresas-help');
+    if (!select || !help) return;
+    const rol = select.selectedOptions[0]?.textContent.trim().toLowerCase();
+    help.textContent = rol === 'operador' || rol === 'supervisor'
+        ? 'Obligatorio: seleccione al menos una empresa para limitar su alcance.'
+        : 'Opcional para Administrador; su alcance se mantiene global.';
+}
+function openUserModal(user = null) {
+    const editando = Boolean(user);
+    document.getElementById('modal-user-title').textContent = editando ? 'Editar Usuario' : 'Nuevo Usuario';
+    document.getElementById('u-submit').textContent = editando ? 'Guardar cambios' : 'Crear Usuario';
+    document.getElementById('u-id').value = user?.id || '';
+    document.getElementById('u-user').value = user?.usuario || '';
+    document.getElementById('u-user').disabled = editando;
+    document.getElementById('u-pass').value = '';
+    document.getElementById('u-pass').required = !editando;
+    document.getElementById('u-pass').style.display = editando ? 'none' : '';
+    document.getElementById('u-pass-label').style.display = editando ? 'none' : '';
+    document.getElementById('u-name').value = user?.nombre || '';
+    const role = rolesSistema.find(r => String(r.nombre).toLowerCase() === String(user?.rol || '').toLowerCase());
+    if (role) document.getElementById('u-rol').value = role.id;
+    actualizarAyudaEmpresas();
+    const asignadas = String(user?.empresas_asignadas || user?.empresas || '').split(',').map(v => v.trim());
+    renderEmpresasUsuario(empresasSistema.filter(e => asignadas.includes(e.nombre_visible)).map(e => e.id));
+    document.getElementById('modal-user').style.display = 'block';
+}
+document.getElementById('u-rol')?.addEventListener('change', actualizarAyudaEmpresas);
+function openUserModalById(id) {
+    openUserModal(usuariosSistema.find(user => Number(user.id) === Number(id)) || null);
+}
 if (document.getElementById('user-form')) {
-    document.getElementById('user-form').onsubmit = async (e) => { e.preventDefault(); const usuario = document.getElementById('u-user').value; const password = document.getElementById('u-pass').value; const nombre = document.getElementById('u-name').value; const rol_id = document.getElementById('u-rol').value; const res = await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ usuario, password, nombre, rol_id }) }); if (res.ok) { document.getElementById('modal-user').style.display = "none"; document.getElementById('user-form').reset(); loadUsers(); alert('Usuario creado'); } else { alert('Error'); } };
+    document.getElementById('user-form').onsubmit = async (e) => {
+        e.preventDefault();
+        const id = document.getElementById('u-id').value;
+        const empresa_ids = [...document.querySelectorAll('input[name="u-empresa"]:checked')].map(input => Number(input.value));
+        const actual = usuariosSistema.find(user => String(user.id) === String(id));
+        const payload = { nombre: document.getElementById('u-name').value, rol_id: Number(document.getElementById('u-rol').value), empresa_ids };
+        if (id && actual) payload.activo = Boolean(actual.activo);
+        if (!id) { payload.usuario = document.getElementById('u-user').value; payload.password = document.getElementById('u-pass').value; }
+        const res = await fetch(id ? `/api/users/${id}` : '/api/users', { method: id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        if (res.ok) { document.getElementById('modal-user').style.display = 'none'; loadUsers(); }
+        else { const error = await res.json().catch(() => ({})); alert(error.message || 'Error guardando usuario'); }
+    };
 }
 async function deleteUser(id) { if (confirm('¿Borrar?')) { await fetch(`/api/users/${id}`, { method: 'DELETE' }); loadUsers(); } }
+async function cambiarEstadoUsuario(id, activo) {
+    const accion = activo ? 'reactivar' : 'desactivar';
+    if (!confirm(`¿Desea ${accion} este usuario?`)) return;
+    const res = await fetch(`/api/users/${id}/estado`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ activo }) });
+    if (!res.ok) { const error = await res.json().catch(() => ({})); alert(error.message || 'No se pudo actualizar el estado'); }
+    loadUsers();
+}
 
 async function cargarProductosPrecios() {
     const empresa = document.getElementById('empresa-select').value; const tbody = document.querySelector('#precios-table tbody'); tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">Cargando...</td></tr>';

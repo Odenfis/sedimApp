@@ -23,6 +23,44 @@ function isAuthenticated(req, res, next) {
     res.status(401).json({ message: 'No autorizado' });
 }
 
+function normalizarRol(rol) {
+    return String(rol || '').trim().toLocaleLowerCase('es-PE');
+}
+
+function esAdministrador(user) {
+    return normalizarRol(user?.rol) === 'administrador';
+}
+
+function tienePermiso(req, permiso) {
+    return Boolean(req.session.user && req.session.user.permisos?.includes(permiso));
+}
+
+function requierePermiso(permiso) {
+    return (req, res, next) => {
+        if (tienePermiso(req, permiso)) return next();
+        res.status(403).json({ message: 'Sin permisos' });
+    };
+}
+
+function empresaAutorizada(req, valor, campo) {
+    const empresas = req.session.user?.empresas || [];
+    return empresas.find(empresa => String(empresa[campo]).trim() === String(valor || '').trim()) || null;
+}
+
+function exigirEmpresa(req, res, valor, campo) {
+    const empresa = empresaAutorizada(req, valor, campo);
+    if (empresa) return empresa;
+    res.status(403).json({ message: 'No tiene acceso a la empresa solicitada' });
+    return null;
+}
+
+async function empresaDeProducto(codigo) {
+    const pool = await getConnection();
+    const result = await pool.request().input('codigo', sql.Char(10), codigo)
+        .query("SELECT TOP 1 LEFT(CodPro, 2) AS codigo_producto FROM Productos WHERE CodPro = @codigo");
+    return result.recordset[0]?.codigo_producto || null;
+}
+
 app.get('/', (req, res) => res.redirect('/login.html'));
 
 // ==========================================
@@ -43,9 +81,24 @@ app.post('/api/login', async (req, res) => {
         const permisosResult = await pool.request().input('rol_id', sql.Int, user.rol_id)
             .query('SELECT m.clave FROM Roles_Permisos rp JOIN Modulos m ON rp.modulo_id = m.id WHERE rp.rol_id = @rol_id');
 
+        const rol = user.rol_nombre;
+        const empresasResult = await pool.request().input('usuario_id', sql.Int, user.id)
+            .input('es_admin', sql.Bit, normalizarRol(rol) === 'administrador')
+            .query(`SELECT ea.id, ea.tabla200_numero, ea.codigo_producto, ea.nombre_ventas, ea.nombre_visible
+                    FROM dbo.Empresas_Acceso ea
+                    WHERE ea.activo = 1 AND (@es_admin = 1 OR EXISTS (
+                        SELECT 1 FROM dbo.Usuarios_Empresas ue
+                        WHERE ue.usuario_id = @usuario_id AND ue.empresa_id = ea.id AND ue.activo = 1
+                    ))
+                    ORDER BY ea.tabla200_numero`);
+
+        if (!esAdministrador({ rol }) && empresasResult.recordset.length === 0) {
+            return res.status(403).json({ message: 'Usuario sin empresas activas asignadas' });
+        }
+
         req.session.user = {
             id: user.id, usuario: user.usuario, nombre: user.nombre,
-            rol: user.rol_nombre, permisos: permisosResult.recordset.map(row => row.clave)
+            rol, permisos: permisosResult.recordset.map(row => row.clave), empresas: empresasResult.recordset
         };
         req.session.save(() => res.json({ message: 'Login exitoso', user: req.session.user }));
     } catch (error) { res.status(500).send(error.message); }
@@ -53,31 +106,119 @@ app.post('/api/login', async (req, res) => {
 
 app.post('/api/logout', (req, res) => { req.session.destroy(); res.json({ message: 'Sesión cerrada' }); });
 app.get('/api/session', (req, res) => { req.session.user ? res.json({ user: req.session.user }) : res.status(401).send(); });
-app.get('/api/roles', isAuthenticated, async (req, res) => {
-    try { const pool = await getConnection(); const result = await pool.request().query('SELECT id, nombre FROM Roles'); res.json(result.recordset); } catch (e) { res.status(500).send(e.message); }
+app.get('/api/roles', isAuthenticated, (req, res, next) => {
+    if (!esAdministrador(req.session.user)) return res.status(403).json({ message: 'Solo Administrador' });
+    next();
+}, async (req, res) => {
+    try { const pool = await getConnection(); const result = await pool.request().query("SELECT id, nombre FROM Roles WHERE LOWER(LTRIM(RTRIM(nombre))) IN ('administrador', 'operador', 'supervisor') ORDER BY nombre"); res.json(result.recordset); } catch (e) { res.status(500).send(e.message); }
 });
+
+app.get('/api/empresas-permitidas', isAuthenticated, (req, res) => res.json(req.session.user.empresas || []));
 
 // ==========================================
 //  USUARIOS
 // ==========================================
 app.get('/api/users', isAuthenticated, async (req, res) => {
-    if (!req.session.user.permisos.includes('usuarios')) return res.status(403).json({ message: 'Sin permisos' });
+    if (!esAdministrador(req.session.user)) return res.status(403).json({ message: 'Solo Administrador' });
     const pool = await getConnection();
-    const result = await pool.request().query(`SELECT u.id, u.usuario, u.nombre, r.nombre as rol FROM usuariosweb u LEFT JOIN Roles r ON u.rol_id = r.id`);
+    const result = await pool.request().query(`SELECT u.id, u.usuario, u.nombre, r.nombre as rol,
+        ISNULL(STRING_AGG(CASE WHEN ue.activo = 1 THEN ea.nombre_visible END, ', '), '') AS empresas,
+        ISNULL(STRING_AGG(ea.nombre_visible, ', '), '') AS empresas_asignadas,
+        CASE WHEN LOWER(LTRIM(RTRIM(r.nombre))) = 'administrador' THEN CAST(1 AS bit)
+             WHEN MAX(CASE WHEN ue.activo = 1 THEN 1 ELSE 0 END) = 1 THEN CAST(1 AS bit)
+             ELSE CAST(0 AS bit) END AS activo
+        FROM usuariosweb u LEFT JOIN Roles r ON u.rol_id = r.id
+        LEFT JOIN Usuarios_Empresas ue ON ue.usuario_id = u.id
+        LEFT JOIN Empresas_Acceso ea ON ea.id = ue.empresa_id
+        GROUP BY u.id, u.usuario, u.nombre, r.nombre ORDER BY u.usuario`);
     res.json(result.recordset);
 });
+app.patch('/api/users/:id/estado', isAuthenticated, async (req, res) => {
+    if (!esAdministrador(req.session.user)) return res.status(403).json({ message: 'Solo Administrador' });
+    const usuarioId = Number(req.params.id);
+    const activo = Boolean(req.body.activo);
+    if (!Number.isInteger(usuarioId)) return res.status(400).json({ message: 'Usuario no válido' });
+    try {
+        const pool = await getConnection();
+        const target = await pool.request().input('id', sql.Int, usuarioId)
+            .query('SELECT r.nombre AS rol FROM usuariosweb u JOIN Roles r ON r.id = u.rol_id WHERE u.id = @id');
+        if (!target.recordset.length) return res.status(404).json({ message: 'Usuario no encontrado' });
+        if (esAdministrador({ rol: target.recordset[0].rol })) return res.status(400).json({ message: 'El Administrador no se desactiva mediante alcance empresarial' });
+        const result = await pool.request().input('id', sql.Int, usuarioId).input('activo', sql.Bit, activo)
+            .query('UPDATE Usuarios_Empresas SET activo = @activo WHERE usuario_id = @id');
+        if (!result.rowsAffected[0]) return res.status(400).json({ message: 'El usuario no tiene empresas asignadas' });
+        res.json({ message: activo ? 'Usuario reactivado' : 'Usuario desactivado' });
+    } catch (error) { res.status(500).json({ message: 'Error actualizando estado' }); }
+});
 app.post('/api/users', isAuthenticated, async (req, res) => {
-    const { usuario, password, nombre, rol_id } = req.body;
+    if (!esAdministrador(req.session.user)) return res.status(403).json({ message: 'Solo Administrador' });
+    const { usuario, password, nombre, rol_id, empresa_ids = [] } = req.body;
     const hashedPassword = await bcrypt.hash(password, 10);
     try {
         const pool = await getConnection();
-        await pool.request().input('u', sql.NVarChar, usuario).input('p', sql.NVarChar, hashedPassword).input('n', sql.NVarChar, nombre).input('r', sql.Int, rol_id)
-            .query('INSERT INTO usuariosweb (usuario, password, nombre, rol_id) VALUES (@u, @p, @n, @r)');
+        const roleResult = await pool.request().input('rol_id', sql.Int, rol_id).query('SELECT nombre FROM Roles WHERE id = @rol_id');
+        const rol = roleResult.recordset[0]?.nombre;
+        if (!rol || !['administrador', 'operador', 'supervisor'].includes(normalizarRol(rol))) return res.status(400).json({ message: 'Rol no válido' });
+        const ids = [...new Set(empresa_ids.map(Number).filter(Number.isInteger))];
+        if (!esAdministrador({ rol }) && ids.length === 0) return res.status(400).json({ message: 'Operador y Supervisor requieren al menos una empresa' });
+        const transaction = new sql.Transaction(pool);
+        await transaction.begin();
+        try {
+            const insertUser = new sql.Request(transaction);
+            const created = await insertUser.input('u', sql.NVarChar, usuario).input('p', sql.NVarChar, hashedPassword).input('n', sql.NVarChar, nombre).input('r', sql.Int, rol_id)
+                .query('INSERT INTO usuariosweb (usuario, password, nombre, rol_id) OUTPUT INSERTED.id VALUES (@u, @p, @n, @r)');
+            for (const empresaId of ids) {
+                const assign = new sql.Request(transaction);
+                const valid = await assign.input('empresa_id', sql.Int, empresaId).query('SELECT id FROM Empresas_Acceso WHERE id = @empresa_id AND activo = 1');
+                if (!valid.recordset.length) throw new Error('Empresa no válida');
+                await new sql.Request(transaction).input('usuario_id', sql.Int, created.recordset[0].id).input('empresa_id', sql.Int, empresaId).input('asignado_por', sql.NVarChar, req.session.user.usuario)
+                    .query('INSERT INTO Usuarios_Empresas(usuario_id, empresa_id, asignado_por) VALUES (@usuario_id, @empresa_id, @asignado_por)');
+            }
+            await transaction.commit();
+        } catch (error) { await transaction.rollback(); throw error; }
         res.json({ message: 'Creado' });
     } catch (err) { res.status(500).json({ message: 'Error' }); }
 });
+app.patch('/api/users/:id', isAuthenticated, async (req, res) => {
+    if (!esAdministrador(req.session.user)) return res.status(403).json({ message: 'Solo Administrador' });
+    const { nombre, rol_id, empresa_ids = [], activo = true } = req.body;
+    const usuarioId = Number(req.params.id);
+    if (!Number.isInteger(usuarioId)) return res.status(400).json({ message: 'Usuario no válido' });
+    try {
+        const pool = await getConnection();
+        const roleResult = await pool.request().input('rol_id', sql.Int, rol_id).query('SELECT nombre FROM Roles WHERE id = @rol_id');
+        const rol = roleResult.recordset[0]?.nombre;
+        const ids = [...new Set(empresa_ids.map(Number).filter(Number.isInteger))];
+        if (!rol || !['administrador', 'operador', 'supervisor'].includes(normalizarRol(rol))) return res.status(400).json({ message: 'Rol no válido' });
+        if (!esAdministrador({ rol }) && ids.length === 0) return res.status(400).json({ message: 'Operador y Supervisor requieren al menos una empresa' });
+        if (ids.length) {
+            const validas = await pool.request().query(`SELECT COUNT(*) AS total FROM Empresas_Acceso WHERE activo = 1 AND id IN (${ids.join(',')})`);
+            if (validas.recordset[0].total !== ids.length) return res.status(400).json({ message: 'Una o más empresas no son válidas' });
+        }
+        const transaction = new sql.Transaction(pool); await transaction.begin();
+        try {
+            await new sql.Request(transaction).input('id', sql.Int, usuarioId).input('nombre', sql.NVarChar, nombre).input('rol_id', sql.Int, rol_id)
+                .query('UPDATE usuariosweb SET nombre = @nombre, rol_id = @rol_id WHERE id = @id');
+            await new sql.Request(transaction).input('id', sql.Int, usuarioId).query('DELETE FROM Usuarios_Empresas WHERE usuario_id = @id');
+            for (const empresaId of ids) await new sql.Request(transaction).input('usuario_id', sql.Int, usuarioId).input('empresa_id', sql.Int, empresaId).input('activo', sql.Bit, Boolean(activo)).input('asignado_por', sql.NVarChar, req.session.user.usuario)
+                .query('INSERT INTO Usuarios_Empresas(usuario_id, empresa_id, activo, asignado_por) VALUES (@usuario_id, @empresa_id, @activo, @asignado_por)');
+            await transaction.commit();
+        } catch (error) { await transaction.rollback(); throw error; }
+        res.json({ message: 'Actualizado' });
+    } catch (error) { res.status(500).json({ message: error.message || 'Error actualizando usuario' }); }
+});
 app.delete('/api/users/:id', isAuthenticated, async (req, res) => {
-    const pool = await getConnection(); await pool.request().input('id', sql.Int, req.params.id).query('DELETE FROM usuariosweb WHERE id = @id'); res.json({ message: 'Eliminado' });
+    if (!esAdministrador(req.session.user)) return res.status(403).json({ message: 'Solo Administrador' });
+    if (Number(req.params.id) === req.session.user.id) return res.status(400).json({ message: 'No puede eliminar su propio usuario' });
+    const pool = await getConnection();
+    const target = await pool.request().input('id', sql.Int, req.params.id)
+        .query('SELECT r.nombre AS rol FROM usuariosweb u JOIN Roles r ON r.id = u.rol_id WHERE u.id = @id');
+    if (!target.recordset.length) return res.status(404).json({ message: 'Usuario no encontrado' });
+    if (normalizarRol(target.recordset[0].rol) === 'administrador') {
+        const admins = await pool.request().query("SELECT COUNT(*) AS total FROM usuariosweb u JOIN Roles r ON r.id = u.rol_id WHERE LOWER(LTRIM(RTRIM(r.nombre))) = 'administrador'");
+        if (admins.recordset[0].total <= 1) return res.status(400).json({ message: 'Debe conservar al menos un Administrador' });
+    }
+    await pool.request().input('id', sql.Int, req.params.id).query('DELETE FROM usuariosweb WHERE id = @id'); res.json({ message: 'Eliminado' });
 });
 
 // ==========================================
@@ -134,9 +275,10 @@ app.delete('/api/sedes/:id', isAuthenticated, async (req, res) => { try { const 
 // ==========================================
 //  CAMBIO DE PRECIOS
 // ==========================================
-app.get('/api/precios/:empresa', isAuthenticated, async (req, res) => {
+app.get('/api/precios/:empresa', isAuthenticated, requierePermiso('herramientas'), async (req, res) => {
     const { empresa } = req.params;
     if (!['02', '04', '06'].includes(empresa)) return res.status(400).json({ message: 'Empresa no válida' });
+    if (!exigirEmpresa(req, res, empresa, 'codigo_producto')) return;
 
     try {
         const pool = await getConnection();
@@ -181,12 +323,14 @@ app.get('/api/precios/:empresa', isAuthenticated, async (req, res) => {
     }
 });
 
-app.put('/api/precios/:codpro', isAuthenticated, async (req, res) => {
+app.put('/api/precios/:codpro', isAuthenticated, requierePermiso('herramientas'), async (req, res) => {
     const { codpro } = req.params;
     // Los precios que llegan aquí (p1...p6) son los que vio el usuario (CON IGVV)
     const { p1, p2, p3, p4, p5, p6 } = req.body;
 
     try {
+        const codigoEmpresa = await empresaDeProducto(codpro);
+        if (!exigirEmpresa(req, res, codigoEmpresa, 'codigo_producto')) return;
         const pool = await getConnection();
 
         // 1. Obtener Factor IGVV y Estado Afecto del Producto
@@ -263,8 +407,9 @@ app.put('/api/precios/:codpro', isAuthenticated, async (req, res) => {
 // ==============================================================
 //  REVISIÓN DE DATOS EN LA NUBE (CÓDIGO DE RENDER RESTAURADO)
 // ==============================================================
-app.post('/api/revision-nube', isAuthenticated, async (req, res) => {
+app.post('/api/revision-nube', isAuthenticated, requierePermiso('herramientas'), async (req, res) => {
     const { empresa, turno, fechaInicio, fechaFin } = req.body;
+    if (!exigirEmpresa(req, res, empresa, 'codigo_producto')) return;
     let idEmpresa, idCajero, prefixTicket;
     if (empresa === '02') { idEmpresa = 2; idCajero = 2; prefixTicket = 'T001'; }
     else if (empresa === '04') { idEmpresa = 4; idCajero = 4; prefixTicket = 'T002'; }
@@ -460,7 +605,7 @@ const checkOperaciones = (req, res, next) => {
 
 
 // 1. Cargar Listas Auxiliares (ACTUALIZADO CON VALORES)
-app.get('/api/productos/listas', isAuthenticated, async (req, res) => {
+app.get('/api/productos/listas', isAuthenticated, checkOperaciones, async (req, res) => {
     try {
         const pool = await getConnection();
 
@@ -486,7 +631,7 @@ app.get('/api/productos/listas', isAuthenticated, async (req, res) => {
 });
 
 // 2. Clases
-app.get('/api/productos/clases/:codLinea', isAuthenticated, async (req, res) => {
+app.get('/api/productos/clases/:codLinea', isAuthenticated, checkOperaciones, async (req, res) => {
     try {
         const pool = await getConnection();
         const result = await pool.request().input('linea', sql.Int, req.params.codLinea).query("SELECT CodClase, Descripcion FROM Clases WHERE CodLinea = @linea ORDER BY Descripcion");
@@ -495,8 +640,9 @@ app.get('/api/productos/clases/:codLinea', isAuthenticated, async (req, res) => 
 });
 
 // 3. Nuevo Código
-app.get('/api/productos/nuevo-codigo/:empresa', isAuthenticated, async (req, res) => {
+app.get('/api/productos/nuevo-codigo/:empresa', isAuthenticated, checkOperaciones, async (req, res) => {
     const { empresa } = req.params;
+    if (!exigirEmpresa(req, res, empresa, 'codigo_producto')) return;
     try {
         const pool = await getConnection();
         const result = await pool.request().input('prefijo', sql.VarChar, empresa + '%').query("SELECT TOP 1 CodPro FROM Productos WHERE CodPro LIKE @prefijo ORDER BY CodPro DESC");
@@ -509,8 +655,9 @@ app.get('/api/productos/nuevo-codigo/:empresa', isAuthenticated, async (req, res
 });
 
 // 4. Buscar Productos
-app.get('/api/productos/buscar', isAuthenticated, async (req, res) => {
+app.get('/api/productos/buscar', isAuthenticated, checkOperaciones, async (req, res) => {
     const { q, empresa, page } = req.query;
+    if (!exigirEmpresa(req, res, empresa, 'codigo_producto')) return;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const pageSize = 50;
     const offset = (pageNum - 1) * pageSize;
@@ -549,8 +696,10 @@ app.get('/api/productos/buscar', isAuthenticated, async (req, res) => {
 });
 
 // 5. Obtener Producto por ID
-app.get('/api/productos/:id', isAuthenticated, async (req, res) => {
+app.get('/api/productos/:id', isAuthenticated, checkOperaciones, async (req, res) => {
     try {
+        const codigoEmpresa = await empresaDeProducto(req.params.id);
+        if (!exigirEmpresa(req, res, codigoEmpresa, 'codigo_producto')) return;
         const pool = await getConnection();
         const result = await pool.request().input('id', sql.Char(10), req.params.id).query("SELECT * FROM Productos WHERE CodPro = @id");
         if (result.recordset.length > 0) res.json(result.recordset[0]);
@@ -559,9 +708,10 @@ app.get('/api/productos/:id', isAuthenticated, async (req, res) => {
 });
 
 // 6. Guardar/Editar Producto (CON LÓGICA DE PRECIOS Y COMISIONES)
-app.post('/api/productos', isAuthenticated, async (req, res) => {
+app.post('/api/productos', isAuthenticated, checkOperaciones, async (req, res) => {
     const p = req.body;
     try {
+        if (!exigirEmpresa(req, res, String(p.CodPro || '').slice(0, 2), 'codigo_producto')) return;
         const pool = await getConnection();
 
         // --- PASO 1: OBTENER FACTOR IGVV DE LA BD ---
@@ -647,8 +797,10 @@ app.post('/api/productos', isAuthenticated, async (req, res) => {
 });
 
 // Eliminar Producto (Lógico)
-app.delete('/api/productos/:id', isAuthenticated, async (req, res) => {
+app.delete('/api/productos/:id', isAuthenticated, checkOperaciones, async (req, res) => {
     try {
+        const codigoEmpresa = await empresaDeProducto(req.params.id);
+        if (!exigirEmpresa(req, res, codigoEmpresa, 'codigo_producto')) return;
         const pool = await getConnection();
 
         // Ejecutamos el UPDATE
@@ -688,8 +840,9 @@ function buildInsumosQuery(empresa, year, month, filters) {
 }
 
 app.post('/api/reports/salida-insumos', isAuthenticated, async (req, res) => {
-    if (!req.session.user.permisos.includes('reportes')) return res.status(403).json({ message: 'Sin permisos' });
+    if (!tienePermiso(req, 'reportes')) return res.status(403).json({ message: 'Sin permisos' });
     const { empresa, year, month, filters, page, pageSize } = req.body;
+    if (!exigirEmpresa(req, res, empresa, 'codigo_producto')) return;
     const offset = (page - 1) * pageSize;
     try {
         const pool = await getConnection();
@@ -703,8 +856,9 @@ app.post('/api/reports/salida-insumos', isAuthenticated, async (req, res) => {
 });
 
 app.post('/api/reports/salida-insumos/export', isAuthenticated, async (req, res) => {
-    if (!req.session.user.permisos.includes('reportes')) return res.status(403).send('Sin permisos');
+    if (!tienePermiso(req, 'reportes')) return res.status(403).send('Sin permisos');
     const { empresa, year, month, filters } = req.body;
+    if (!exigirEmpresa(req, res, empresa, 'codigo_producto')) return;
     try {
         const pool = await getConnection();
         const whereClause = buildInsumosQuery(empresa, year, month, filters);
@@ -767,15 +921,7 @@ app.put('/api/admin/claves/:id', isAuthenticated, async (req, res) => {
 
 // Endpoint para llenar el combo de Empresas (Cajeros)
 app.get('/api/reports/listas/empresas', isAuthenticated, async (req, res) => {
-    try {
-        const pool = await getConnection();
-        // Consultamos n_codtabla = 200
-        const result = await pool.request().query("SELECT n_numero, c_describe FROM Tablas WHERE n_codtabla = 200 ORDER BY c_describe");
-        res.json(result.recordset);
-    } catch (e) {
-        console.error(e);
-        res.status(500).send('Error cargando empresas');
-    }
+    res.json((req.session.user.empresas || []).map(empresa => ({ n_numero: empresa.tabla200_numero, c_describe: empresa.nombre_visible })));
 });
 
 
@@ -805,6 +951,7 @@ function buildSaldoProveedoresQuery(filters) {
 }
 
 app.post('/api/reports/saldo-proveedores', isAuthenticated, async (req, res) => {
+    if (!esAdministrador(req.session.user)) return res.status(403).json({ message: 'Reporte disponible solo para Administrador' });
     const { filters, page, pageSize } = req.body;
     const offset = (page - 1) * pageSize;
 
@@ -854,6 +1001,7 @@ app.post('/api/reports/saldo-proveedores', isAuthenticated, async (req, res) => 
 });
 
 app.post('/api/reports/saldo-proveedores/export', isAuthenticated, async (req, res) => {
+    if (!esAdministrador(req.session.user)) return res.status(403).json({ message: 'Reporte disponible solo para Administrador' });
     const { filters } = req.body;
     try {
         const pool = await getConnection();
@@ -949,9 +1097,10 @@ function buildCargosQuery(empresa, year, month, turno, filters) {
 // Endpoint: Obtener Datos Cargos Caja
 app.post('/api/reports/cargos-caja', isAuthenticated, async (req, res) => {
     // Validar Rol (Solo Admin, usa el permiso 'reportes')
-    if (!req.session.user.permisos.includes('reportes')) return res.status(403).json({ message: 'Sin permisos' });
+    if (!tienePermiso(req, 'reportes')) return res.status(403).json({ message: 'Sin permisos' });
 
     const { empresa, year, month, turno, filters, page, pageSize } = req.body;
+    if (!exigirEmpresa(req, res, empresa, 'tabla200_numero')) return;
     const offset = (page - 1) * pageSize;
 
     try {
@@ -1006,8 +1155,9 @@ app.post('/api/reports/cargos-caja', isAuthenticated, async (req, res) => {
 
 // Endpoint: Exportar Excel Cargos Caja
 app.post('/api/reports/cargos-caja/export', isAuthenticated, async (req, res) => {
-    if (!req.session.user.permisos.includes('reportes')) return res.status(403).send('Sin permisos');
+    if (!tienePermiso(req, 'reportes')) return res.status(403).send('Sin permisos');
     const { empresa, year, month, turno, filters } = req.body;
+    if (!exigirEmpresa(req, res, empresa, 'tabla200_numero')) return;
 
     try {
         const pool = await getConnection();
@@ -1065,6 +1215,7 @@ const checkRecetas = (req, res, next) => {
 // 1. Buscar Productos para Recetas (Con filtro de Empresa)
 app.get('/api/recetas/productos/buscar', isAuthenticated, checkRecetas, async (req, res) => {
     const { q, empresa } = req.query; // Recibimos 'empresa'
+    if (!exigirEmpresa(req, res, empresa, 'codigo_producto')) return;
     try {
         const pool = await getConnection();
 
@@ -1097,6 +1248,7 @@ app.get('/api/recetas/productos/buscar', isAuthenticated, checkRecetas, async (r
 // 2. Buscar Insumos (Solo Tipo 1) - CON FILTRO DE EMPRESA ESPECIAL
 app.get('/api/recetas/insumos/buscar', isAuthenticated, checkRecetas, async (req, res) => {
     const { q, empresa } = req.query; // Recibimos empresa
+    if (!exigirEmpresa(req, res, empresa, 'codigo_producto')) return;
     try {
         const pool = await getConnection();
         const request = pool.request();
@@ -1136,6 +1288,7 @@ app.get('/api/recetas/insumos/buscar', isAuthenticated, checkRecetas, async (req
 app.get('/api/recetas/:codProd', isAuthenticated, checkRecetas, async (req, res) => {
     const { codProd } = req.params;
     try {
+        if (!exigirEmpresa(req, res, String(codProd).slice(0, 2), 'codigo_producto')) return;
         const pool = await getConnection();
         // Join para traer nombre del insumo y nombre de la unidad
         const query = `
@@ -1155,6 +1308,7 @@ app.post('/api/recetas', isAuthenticated, checkRecetas, async (req, res) => {
     const { codProd, items } = req.body; // items es array: [{codInsumo, cantidad, unimed}, ...]
 
     if (!codProd) return res.status(400).send("Falta código producto");
+    if (!exigirEmpresa(req, res, String(codProd).slice(0, 2), 'codigo_producto')) return;
 
     const transaction = new sql.Transaction(await getConnection());
 
@@ -1307,6 +1461,7 @@ app.get('/api/auditoria/subida-nube', isAuthenticated, async (req, res) => {
 
 // 1. Obtener estados de turnos (Tabla 201)
 app.get('/api/operaciones/turnos', isAuthenticated, async (req, res) => {
+    if (!esAdministrador(req.session.user)) return res.status(403).json({ message: 'Operación global disponible solo para Administrador' });
     try {
         const pool = await getConnection();
         const result = await pool.request()
@@ -1317,6 +1472,7 @@ app.get('/api/operaciones/turnos', isAuthenticated, async (req, res) => {
 
 // 2. Validar Clave de Autorización (Desde Tabla Valores)
 app.post('/api/operaciones/validar-clave-turno', isAuthenticated, async (req, res) => {
+    if (!esAdministrador(req.session.user)) return res.status(403).json({ message: 'Operación global disponible solo para Administrador' });
     const { password } = req.body;
     try {
         const pool = await getConnection();
@@ -1336,6 +1492,7 @@ app.post('/api/operaciones/validar-clave-turno', isAuthenticated, async (req, re
 
 // 3. Actualizar Turno
 app.put('/api/operaciones/turnos/:id', isAuthenticated, async (req, res) => {
+    if (!esAdministrador(req.session.user)) return res.status(403).json({ message: 'Operación global disponible solo para Administrador' });
     const { id } = req.params;
     const { nuevoTurno } = req.body;
     try {
@@ -1366,8 +1523,10 @@ function tipoDocCase() {
 }
 
 // Construye el WHERE comun del reporte (misma logica de v_CargosDeCaja)
-function buildCargoResultadoWhere(f) {
+function buildCargoResultadoWhere(f, empresas = []) {
     let where = ` WHERE (c.Tipo = 1) AND (c.Eliminado = 0) AND (c.Razon <> 61)`;
+    const cajeros = empresas.map(e => parseInt(e.tabla200_numero)).filter(Number.isInteger);
+    where += cajeros.length ? ` AND c.Cajero IN (${cajeros.join(',')})` : ' AND 1 = 0';
 
     if (f.anio) where += ` AND YEAR(c.Fecha) = ${parseInt(f.anio)}`;
     if (f.sede && f.sede !== 'all') where += ` AND c.Cajero = ${parseInt(f.sede)}`;
@@ -1394,11 +1553,12 @@ const CARGO_BASE_JOINS = `
 
 // 1. Dashboard: KPIs + Matriz (TipoCargo x Mes) + totales
 app.post('/api/cargos/dashboard', isAuthenticated, async (req, res) => {
-    if (!req.session.user.permisos.includes('reportes')) return res.status(403).json({ message: 'Sin permisos' });
+    if (!tienePermiso(req, 'reportes')) return res.status(403).json({ message: 'Sin permisos' });
     const f = req.body.filters || {};
+    if (f.sede && f.sede !== 'all' && !exigirEmpresa(req, res, f.sede, 'tabla200_numero')) return;
     try {
         const pool = await getConnection();
-        const where = buildCargoResultadoWhere(f);
+        const where = buildCargoResultadoWhere(f, req.session.user.empresas);
 
         // KPIs y total general
         const kpis = await bindCargoResultadoParams(pool.request(), f)
@@ -1446,14 +1606,15 @@ app.post('/api/cargos/dashboard', isAuthenticated, async (req, res) => {
 
 // 2. Detalle (drill-down estilo FICO): Razones de un TipoCargo + mes
 app.post('/api/cargos/detalle', isAuthenticated, async (req, res) => {
-    if (!req.session.user.permisos.includes('reportes')) return res.status(403).json({ message: 'Sin permisos' });
+    if (!tienePermiso(req, 'reportes')) return res.status(403).json({ message: 'Sin permisos' });
     const { tipoCargo, mes, filters } = req.body;
     if (!tipoCargo || !mes) return res.status(400).json({ message: 'Faltan parámetros' });
 
     const f = Object.assign({}, filters || {}, { mes: 0, anio: filters && filters.anio ? filters.anio : new Date().getFullYear() });
+    if (f.sede && f.sede !== 'all' && !exigirEmpresa(req, res, f.sede, 'tabla200_numero')) return;
     try {
         const pool = await getConnection();
-        let where = buildCargoResultadoWhere(f) + ` AND t2.c_describe = @tipoCargo`;
+        let where = buildCargoResultadoWhere(f, req.session.user.empresas) + ` AND t2.c_describe = @tipoCargo`;
         if (parseInt(mes) > 0) where += ` AND MONTH(c.Fecha) = @mes`;
 
 const razonesQuery = bindCargoResultadoParams(pool.request(), f)
@@ -1477,11 +1638,12 @@ res.json({ razones: razonesRes.recordset, registros: registrosRes.recordset });
 
 // 3. Exportar Matriz a Excel (misma forma que la hoja Dinamica)
 app.post('/api/cargos/export', isAuthenticated, async (req, res) => {
-    if (!req.session.user.permisos.includes('reportes')) return res.status(403).send('Sin permisos');
+    if (!tienePermiso(req, 'reportes')) return res.status(403).send('Sin permisos');
     const f = req.body.filters || {};
+    if (f.sede && f.sede !== 'all' && !exigirEmpresa(req, res, f.sede, 'tabla200_numero')) return;
     try {
         const pool = await getConnection();
-        const where = buildCargoResultadoWhere(f);
+        const where = buildCargoResultadoWhere(f, req.session.user.empresas);
 
         const matrix = await bindCargoResultadoParams(pool.request(), f)
             .query(`SELECT t2.c_describe AS tipoCargo, MONTH(c.Fecha) AS mes, SUM(c.Monto) AS monto ${CARGO_BASE_JOINS} ${where} GROUP BY t2.c_describe, MONTH(c.Fecha) ORDER BY t2.c_describe`);
@@ -1530,7 +1692,7 @@ app.post('/api/cargos/export', isAuthenticated, async (req, res) => {
 const SEDES_VENTAS_PERMITIDAS = ['Cocineria', 'Mar Picante 1', 'Inversiones Abruzzo Sac'];
 
 app.get('/api/reports/ventas-estadistica', isAuthenticated, async (req, res) => {
-    if (!req.session.user.permisos.includes('reportes')) return res.status(403).json({ message: 'Sin permisos' });
+    if (!tienePermiso(req, 'reportes')) return res.status(403).json({ message: 'Sin permisos' });
     const { empresa, turno, dia, mes, anio } = req.query;
     if (!empresa || !turno || !dia || !mes || !anio) {
         return res.status(400).json({ message: 'Faltan parámetros: empresa, turno, dia, mes, anio' });
@@ -1538,6 +1700,7 @@ app.get('/api/reports/ventas-estadistica', isAuthenticated, async (req, res) => 
     if (!SEDES_VENTAS_PERMITIDAS.includes(empresa.trim())) {
         return res.status(400).json({ message: 'Empresa no permitida' });
     }
+    if (!exigirEmpresa(req, res, empresa, 'nombre_ventas')) return;
     const turnoInt = parseInt(turno);
     if (turnoInt !== 1 && turnoInt !== 2 && turnoInt !== 0) {
         return res.status(400).json({ message: 'Turno debe ser 0 (ambos), 1 o 2' });
@@ -1568,7 +1731,7 @@ app.get('/api/reports/ventas-estadistica', isAuthenticated, async (req, res) => 
 });
 
 app.get('/api/reports/ventas-estadistica/rango', isAuthenticated, async (req, res) => {
-    if (!req.session.user.permisos.includes('reportes')) return res.status(403).json({ message: 'Sin permisos' });
+    if (!tienePermiso(req, 'reportes')) return res.status(403).json({ message: 'Sin permisos' });
     const { empresa, turno, fInicio, fFin } = req.query;
     if (!empresa || !turno || !fInicio || !fFin) {
         return res.status(400).json({ message: 'Faltan parámetros: empresa, turno, fInicio, fFin' });
@@ -1576,6 +1739,7 @@ app.get('/api/reports/ventas-estadistica/rango', isAuthenticated, async (req, re
     if (!SEDES_VENTAS_PERMITIDAS.includes(empresa.trim())) {
         return res.status(400).json({ message: 'Empresa no permitida' });
     }
+    if (!exigirEmpresa(req, res, empresa, 'nombre_ventas')) return;
     const turnoInt = parseInt(turno);
     if (turnoInt !== 1 && turnoInt !== 2 && turnoInt !== 0) {
         return res.status(400).json({ message: 'Turno debe ser 0 (ambos), 1 o 2' });

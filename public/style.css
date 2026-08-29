@@ -1518,6 +1518,127 @@ form label {
     flex: 1;
 }
 
+/* Gestión de usuarios: formulario legible, escaneable y cómodo al tacto. */
+#modal-user .user-modal-content {
+    width: min(460px, calc(100vw - 32px));
+    margin: max(24px, 5vh) auto;
+    position: relative;
+    overflow: hidden auto;
+}
+
+#modal-user .user-modal-close {
+    position: absolute;
+    top: 13px;
+    right: 14px;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    font-size: 2rem;
+    line-height: 1;
+    color: var(--text-secondary);
+}
+
+#modal-user .user-modal-close:hover,
+#modal-user .user-modal-close:focus-visible {
+    color: var(--red-status);
+    background: var(--bg-color);
+    outline: none;
+}
+
+#modal-user .modal-content h2 {
+    padding: 22px 62px 20px 24px;
+    margin: 0;
+    font-size: 1.25rem;
+}
+
+#modal-user .user-form {
+    padding: 22px 24px 24px;
+    gap: 16px;
+}
+
+#modal-user .user-form-field {
+    display: grid;
+    gap: 7px;
+}
+
+#modal-user .user-form label {
+    margin: 0;
+    font-weight: 650;
+}
+
+#modal-user .user-form input:not([type="checkbox"]),
+#modal-user .user-form select {
+    min-height: 44px;
+    margin: 0;
+    padding: 10px 12px;
+}
+
+#modal-user .user-empresas-fieldset {
+    margin: 2px 0 0;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+}
+
+#modal-user .user-empresas-fieldset legend {
+    padding: 0 7px;
+    font-weight: 700;
+}
+
+#modal-user .user-empresas-help {
+    margin: 0 4px 10px;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    line-height: 1.4;
+}
+
+#modal-user .user-empresas-list {
+    display: grid;
+    gap: 7px;
+}
+
+#modal-user .empresa-option {
+    display: grid;
+    grid-template-columns: 20px 1fr;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 9px 11px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    color: var(--text-color);
+}
+
+#modal-user .empresa-option:hover {
+    background: var(--bg-color);
+    border-color: var(--border-color);
+}
+
+#modal-user .empresa-option:has(input:checked) {
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 9%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 35%, var(--border-color));
+}
+
+#modal-user .empresa-option input {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    accent-color: var(--accent);
+}
+
+#modal-user .user-modal-actions {
+    margin-top: 4px;
+}
+
+#modal-user .user-modal-actions .btn-save {
+    min-height: 44px;
+}
+
 .checkbox-container {
     display: flex;
     align-items: center;

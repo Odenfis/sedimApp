@@ -75,10 +75,10 @@
                         <i class="fas fa-chevron-down arrow-icon"></i>
                             </button>
                     <ul class="submenu">
-                        <li onclick="showView('precios')" data-module="precios" title="Cambio de Precios">
+                        <li onclick="showView('precios')" data-module="herramientas" title="Cambio de Precios">
                             <i class="fas fa-tags"></i> <span>Cambio de Precios</span>
                         </li>
-                        <li onclick="showView('revision')" data-module="revision" title="Revisión Datos Nube">
+                        <li onclick="showView('revision')" data-module="herramientas" title="Revisión Datos Nube">
                             <i class="fas fa-cloud"></i> <span>Revisión Datos Nube</span>
                         </li>
                         <!-- NUEVA OPCIÓN: ACTUALIZAR ERP NUBE -->
@@ -105,7 +105,7 @@
                             <i class="fas fa-utensils"></i> <span>Gestión Recetas</span>
                         </li>
                         <!-- NUEVO: CIERRE DE TURNOS -->
-                        <li onclick="showView('cierre-turnos')" title="Cierre de Turnos">
+                        <li onclick="showView('cierre-turnos')" title="Cierre de Turnos" data-admin-only>
                             <i class="fas fa-clock-rotate-left"></i> <span>Cierre de Turnos</span>
                         </li>
                     </ul>
@@ -155,7 +155,7 @@
                             <i class="fas fa-cash-register"></i> <span>Cargos de Caja</span>
                         </li>
                         <!-- NUEVO REPORTE CTA PROVEEDORES -->
-                        <li onclick="showView('reportes-saldo-prov')" title="Saldo Proveedores">
+                        <li onclick="showView('reportes-saldo-prov')" title="Saldo Proveedores" data-admin-only>
                             <i class="fas fa-file-invoice-dollar"></i> <span>Saldo Proveedores</span>
                         </li>
                         <!-- NUEVO REPORTE: CARGO CAJA RESULTADO -->
@@ -210,6 +210,8 @@
                                 <th>Usuario</th>
                                 <th>Nombre Completo</th>
                                 <th>Rol</th>
+                                <th>Empresas asignadas</th>
+                                <th>Estado</th>
                                 <th>Acciones</th>
                             </tr>
                         </thead>
@@ -1143,13 +1145,21 @@
         </div>
     </div>
     <div id="modal-user" class="modal">
-        <div class="modal-content"> <span class="close" onclick="closeModal('modal-user')">&times;</span>
-            <h2>Nuevo Usuario</h2>
-            <form id="user-form"><label>Usuario (Login)</label><input type="text" id="u-user"
-                    required><label>Contraseña</label><input type="password" id="u-pass" required><label>Nombre
-                    Completo</label><input type="text" id="u-name" required><label>Rol</label><select id="u-rol"
-                    required></select>
-                <div class="modal-actions"><button type="submit" class="btn-save">Crear Usuario</button></div>
+        <div class="modal-content user-modal-content">
+            <button type="button" class="close user-modal-close" aria-label="Cerrar" onclick="closeModal('modal-user')">&times;</button>
+            <h2 id="modal-user-title">Nuevo Usuario</h2>
+            <form id="user-form" class="user-form">
+                <input type="hidden" id="u-id">
+                <div class="user-form-field"><label for="u-user">Usuario de acceso</label><input type="text" id="u-user" autocomplete="username" required></div>
+                <div class="user-form-field user-password-field"><label id="u-pass-label" for="u-pass">Contraseña</label><input type="password" id="u-pass" autocomplete="new-password" required></div>
+                <div class="user-form-field"><label for="u-name">Nombre completo</label><input type="text" id="u-name" required></div>
+                <div class="user-form-field"><label for="u-rol">Rol del sistema</label><select id="u-rol" required></select></div>
+                <fieldset id="u-empresas-fieldset" class="user-empresas-fieldset">
+                    <legend>Empresas asignadas</legend>
+                    <p id="u-empresas-help" class="user-empresas-help">Seleccione las empresas disponibles para este usuario.</p>
+                    <div id="u-empresas-list" class="user-empresas-list"></div>
+                </fieldset>
+                <div class="modal-actions user-modal-actions"><button type="submit" class="btn-save" id="u-submit">Crear Usuario</button></div>
             </form>
         </div>
     </div>
