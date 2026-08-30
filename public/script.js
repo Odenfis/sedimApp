@@ -1731,9 +1731,21 @@ async function cargarTurnosControl() {
 
     try {
         const res = await fetch('/api/operaciones/turnos');
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+            const mensaje = res.status === 403
+                ? 'No tiene permiso para consultar el cierre de turnos.'
+                : (data.message || 'Error al cargar los turnos.');
+            container.innerHTML = `<p>${mensaje}</p>`;
+            return;
+        }
 
         container.innerHTML = '';
+        if (data.length === 0) {
+            container.innerHTML = '<p>No tiene empresas activas asignadas para el cierre de turnos.</p>';
+            return;
+        }
         data.forEach(t => {
             const turnoActual = parseInt(t.conversion);
             const card = document.createElement('div');
@@ -1764,7 +1776,7 @@ async function cargarTurnosControl() {
             `;
             container.appendChild(card);
         });
-    } catch (e) { container.innerHTML = '<p>Error al cargar turnos</p>'; }
+    } catch (e) { container.innerHTML = '<p>Error de conexión al cargar los turnos.</p>'; }
 }
 
 // Variables temporales para el cambio
@@ -1802,7 +1814,14 @@ if (document.getElementById('form-validate-pass')) {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ password: clave })
                 });
-                const data = await res.json();
+                const data = await res.json().catch(() => ({}));
+
+                if (!res.ok) {
+                    alert(res.status === 403
+                        ? 'No tiene permiso para autorizar cambios de turno.'
+                        : (data.message || 'No se pudo validar la autorización.'));
+                    return;
+                }
 
                 if (data.success) {
                     closeModal('modal-password');
@@ -1881,12 +1900,17 @@ async function ejecutarCambioTurno() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ nuevoTurno: turnoPendiente.nuevoValor })
         });
+        const data = await res.json().catch(() => ({}));
 
         if (res.ok) {
-            alert("Turno actualizado correctamente");
+            alert(data.message || 'Turno actualizado correctamente');
             cargarTurnosControl(); // Recargar tarjetas
+        } else {
+            alert(res.status === 403
+                ? 'No tiene acceso a la empresa solicitada.'
+                : (data.message || 'No se pudo actualizar el turno.'));
         }
-    } catch (e) { alert("Error al actualizar"); }
+    } catch (e) { alert('Error de conexión al actualizar el turno.'); }
 }
 
 // ==========================================

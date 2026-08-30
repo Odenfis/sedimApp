@@ -601,8 +601,9 @@ en la carpeta `public/`.
   de módulo y empresa y la aplica en Productos, Precios, Revisión de Nube, Recetas,
   Salida de Insumos, Cargos de Caja, Cargo Caja Resultado y Estadística de Venta,
   incluyendo exportaciones. Una empresa manipulada fuera del alcance responde 403.
-- Saldo de Proveedores y Cierre de Turnos se restringieron a Administrador porque aún no
-  disponen de una dimensión empresarial comprobada.
+- Saldo de Proveedores se restringió a Administrador. Cierre de Turnos quedó inicialmente
+  restringido hasta comprobar su correspondencia empresarial; desde el 30/08/2026 usa
+  `Tablas(201).n_numero = Empresas_Acceso.tabla200_numero` para limitar el alcance.
 - Usuarios del Sistema permite al Administrador crear, editar, desactivar/reactivar y eliminar usuarios con
   rol estándar y empresas asignadas; los roles restringidos requieren al menos una
   empresa. La desactivación usa las asignaciones empresariales y bloquea el inicio de
@@ -679,6 +680,20 @@ en la carpeta `public/`.
 - Los inputs de fecha usan tipografía y padding más compactos, con altura táctil mínima
   de 42px. Sin cambios en IDs, valores, JavaScript, consulta, exportación o backend.
 - Archivos: `public/dashboard.html`, `public/style.css`, `updates/progress.md`.
+- Estado: ✅
+
+**30/08/2026** — Cierre de Turnos por empresas asignadas
+
+- Se habilitó Cierre de Turnos para Administrador, Operador y Supervisor mediante el
+  permiso `operaciones`, manteniendo la clave compartida `AutorizaTurnoWeb` antes de
+  cada cambio.
+- La consulta devuelve únicamente los registros de `Tablas(201)` que coinciden con
+  `tabla200_numero` de las empresas activas de la sesión. El `PUT` vuelve a comprobar
+  ese alcance en el servidor, rechaza empresas manipuladas y solo admite turnos 1 o 2.
+- Se mejoraron los estados vacíos y los mensajes de permisos, validación y actualización
+  en el frontend. No se agregaron endpoints, tablas ni cambios de formato exitoso.
+- Archivos: `server.js`, `public/dashboard.html`, `public/script.js`,
+  `updates/progress.md`.
 - Estado: ✅
 
 ---

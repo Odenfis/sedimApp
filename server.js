@@ -1460,19 +1460,28 @@ app.get('/api/auditoria/subida-nube', isAuthenticated, async (req, res) => {
 // ==========================================
 
 // 1. Obtener estados de turnos (Tabla 201)
-app.get('/api/operaciones/turnos', isAuthenticated, async (req, res) => {
-    if (!esAdministrador(req.session.user)) return res.status(403).json({ message: 'Operación global disponible solo para Administrador' });
+app.get('/api/operaciones/turnos', isAuthenticated, requierePermiso('operaciones'), async (req, res) => {
     try {
         const pool = await getConnection();
-        const result = await pool.request()
-            .query("SELECT n_numero, c_describe, conversion FROM Tablas WHERE n_codtabla = 201 ORDER BY n_numero");
+        const empresas = req.session.user.empresas || [];
+        if (empresas.length === 0) return res.json([]);
+
+        const request = pool.request();
+        const parametros = empresas.map((empresa, index) => {
+            const nombre = `empresa${index}`;
+            request.input(nombre, sql.Int, Number(empresa.tabla200_numero));
+            return `@${nombre}`;
+        });
+        const result = await request.query(`SELECT n_numero, c_describe, conversion
+            FROM Tablas
+            WHERE n_codtabla = 201 AND n_numero IN (${parametros.join(', ')})
+            ORDER BY n_numero`);
         res.json(result.recordset);
-    } catch (e) { res.status(500).send('Error turnos'); }
+    } catch (e) { res.status(500).json({ message: 'Error al cargar los turnos' }); }
 });
 
 // 2. Validar Clave de Autorización (Desde Tabla Valores)
-app.post('/api/operaciones/validar-clave-turno', isAuthenticated, async (req, res) => {
-    if (!esAdministrador(req.session.user)) return res.status(403).json({ message: 'Operación global disponible solo para Administrador' });
+app.post('/api/operaciones/validar-clave-turno', isAuthenticated, requierePermiso('operaciones'), async (req, res) => {
     const { password } = req.body;
     try {
         const pool = await getConnection();
@@ -1487,23 +1496,32 @@ app.post('/api/operaciones/validar-clave-turno', isAuthenticated, async (req, re
             }
         }
         res.json({ success: false, message: 'Clave de autorización incorrecta' });
-    } catch (e) { res.status(500).send('Error validación'); }
+    } catch (e) { res.status(500).json({ message: 'Error al validar la autorización' }); }
 });
 
 // 3. Actualizar Turno
-app.put('/api/operaciones/turnos/:id', isAuthenticated, async (req, res) => {
-    if (!esAdministrador(req.session.user)) return res.status(403).json({ message: 'Operación global disponible solo para Administrador' });
+app.put('/api/operaciones/turnos/:id', isAuthenticated, requierePermiso('operaciones'), async (req, res) => {
     const { id } = req.params;
     const { nuevoTurno } = req.body;
+    const empresaId = Number(id);
+    const turno = Number(nuevoTurno);
+
+    if (!Number.isInteger(empresaId)) return res.status(400).json({ message: 'Empresa no válida' });
+    if (turno !== 1 && turno !== 2) return res.status(400).json({ message: 'El turno debe ser 1 o 2' });
+    if (!exigirEmpresa(req, res, empresaId, 'tabla200_numero')) return;
+
     try {
         const pool = await getConnection();
-        await pool.request()
-            .input('id', sql.Int, parseInt(id)) // Forzar entero
-            .input('turno', sql.Decimal(9, 2), parseFloat(nuevoTurno)) // Forzar decimal
+        const result = await pool.request()
+            .input('id', sql.Int, empresaId)
+            .input('turno', sql.Decimal(9, 2), turno)
             .query("UPDATE Tablas SET conversion = @turno WHERE n_codtabla = 201 AND n_numero = @id");
+        if (result.rowsAffected[0] !== 1) {
+            return res.status(404).json({ message: 'No se encontró el turno de la empresa' });
+        }
         res.json({ message: 'Turno actualizado correctamente' });
     } catch (e) {
-        res.status(500).send(e.message);
+        res.status(500).json({ message: 'Error al actualizar el turno' });
     }
 });
 
