@@ -2598,52 +2598,48 @@ function renderTablaVentas(data, totalGeneral) {
     }
 }
 
-async function exportarEstadisticaVentas() {
+async function exportarEstadisticaVentas(formato, btn) {
     const f = getVentasFiltros();
     if (!f.fInicio || !f.fFin) { alert('Seleccione rango de fechas'); return; }
 
+    const inicio = new Date(f.fInicio + 'T00:00:00');
+    const fin = new Date(f.fFin + 'T00:00:00');
+    if (fin < inicio) { alert('La fecha fin no puede ser menor que la fecha inicio'); return; }
+
+    const formatoValido = formato === 'pdf' ? 'pdf' : 'excel';
+    const original = btn?.innerHTML;
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Generando ${formatoValido === 'pdf' ? 'PDF' : 'Excel'}...`;
+    }
+
     try {
-        let result;
-        const esRango = f.fInicio !== f.fFin;
-
-        if (esRango) {
-            const params = new URLSearchParams({
-                empresa: f.empresa, turno: f.turno,
-                fInicio: f.fInicio, fFin: f.fFin
-            });
-            const res = await fetch(`/api/reports/ventas-estadistica/rango?${params}`);
-            if (!res.ok) throw new Error(res.statusText);
-            result = await res.json();
-        } else {
-            const d = new Date(f.fInicio + 'T00:00:00');
-            const params = new URLSearchParams({
-                empresa: f.empresa, turno: f.turno,
-                dia: d.getDate(), mes: d.getMonth() + 1, anio: d.getFullYear()
-            });
-            const res = await fetch(`/api/reports/ventas-estadistica?${params}`);
-            if (!res.ok) throw new Error(res.statusText);
-            const raw = await res.json();
-            result = { data: raw.data || [], totalGeneral: (raw.data || []).reduce((s, r) => s + (parseFloat(r.Soles) || 0), 0) };
-        }
-
-        let csv = 'Tipo de Cobro,Soles,Porcentaje\n';
-        const total = result.totalGeneral || 0;
-        result.data.forEach(r => {
-            const soles = parseFloat(r.Soles) || 0;
-            const pct = total > 0 ? ((soles / total) * 100).toFixed(1) : '0.0';
-            csv += `"${r.tDeposito}",${soles.toFixed(2)},${pct}%\n`;
+        const res = await fetch(`/api/reports/ventas-estadistica/export/${formatoValido}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ empresa: f.empresa, turno: f.turno, fInicio: f.fInicio, fFin: f.fFin })
         });
-        csv += `"TOTAL GENERAL",${total.toFixed(2)},100%\n`;
-
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        if (!res.ok) {
+            const error = await res.json().catch(() => ({ message: 'No se pudo generar el archivo' }));
+            throw new Error(error.message || 'No se pudo generar el archivo');
+        }
+        const blob = await res.blob();
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
-        link.download = `EstadisticaVenta_${f.empresa}_${f.fInicio}_${f.fFin}.csv`;
+        const disposition = res.headers.get('Content-Disposition') || '';
+        const match = disposition.match(/filename="?([^";]+)"?/i);
+        link.download = match?.[1] || `EstadisticaVenta_${f.empresa}_${f.fInicio}_${f.fFin}.${formatoValido === 'excel' ? 'xlsx' : 'pdf'}`;
+        document.body.appendChild(link);
         link.click();
+        link.remove();
         URL.revokeObjectURL(link.href);
-
     } catch (e) {
         console.error('Error exportando:', e);
-        alert('Error al exportar');
+        alert(e.message || 'Error al exportar');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = original;
+        }
     }
 }

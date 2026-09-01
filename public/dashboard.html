@@ -1022,8 +1022,11 @@
                     <button class="btn-save" id="ve-btn-consultar" onclick="cargarEstadisticaVentas()">
                         <i class="fas fa-search"></i> Consultar
                     </button>
-                    <button class="btn-save ve-btn-export" onclick="exportarEstadisticaVentas()">
-                        <i class="fas fa-file-excel"></i> Exportar
+                    <button class="btn-save ve-btn-export ve-btn-excel" onclick="exportarEstadisticaVentas('excel', this)">
+                        <i class="fas fa-file-excel"></i> Excel
+                    </button>
+                    <button class="btn-save ve-btn-export ve-btn-pdf" onclick="exportarEstadisticaVentas('pdf', this)">
+                        <i class="fas fa-file-pdf"></i> PDF
                     </button>
                 </div>
             </div>

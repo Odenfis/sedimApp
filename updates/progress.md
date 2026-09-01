@@ -29,6 +29,8 @@ en la carpeta `public/`.
 | Hash de contraseñas | `bcryptjs` | ^3.0.3 | Login y creación de usuarios |
 | Base de datos | Azure SQL (SQL Server) | — | Cliente `mssql` ^12.2.0 |
 | Exportación Excel | `exceljs` | ^4.4.0 | Reportes `.xlsx` |
+| Exportación PDF | `pdfkit` | ^0.20.2 | Reportes PDF paginados en backend |
+| Gráficas de exportación | `pureimage` | ^0.4.20 | PNG reutilizable en Excel y PDF |
 | Variables de entorno | `dotenv` | ^17.2.3 | Config en `.env` |
 | Middleware HTTP | `body-parser` / `cors` | ^2.2.1 / ^2.8.5 | — |
 | Archivos temporales | `tmp` | ^0.2.5 | — |
@@ -130,7 +132,7 @@ en la carpeta `public/`.
 | **Cierre de Turnos (Operaciones)** | `get /api/operaciones/turnos`, `PUT /api/operaciones/turnos/:id` | ✅ Implementado |
 | **Actualizar Sistema ERP Nube (Herramientas)** | `GET /api/herramientas/actualizar-erp` | ✅ Implementado |
 | **Configurador de Actualizaciones (Admin)** | `GET/POST /api/admin/config-actualizaciones`, generación dinámica del .bat en `/api/herramientas/actualizar-erp` | ✅ Implementado |
-| **Reportes — Estadística de Venta** | `GET /api/reports/ventas-estadistica`, `GET /api/reports/ventas-estadistica/rango` | ✅ Implementado con alcance por empresa |
+| **Reportes — Estadística de Venta** | `GET /api/reports/ventas-estadistica`, `GET /api/reports/ventas-estadistica/rango`, `POST /api/reports/ventas-estadistica/export/excel`, `POST /api/reports/ventas-estadistica/export/pdf` | ✅ Implementado con alcance por empresa |
 
 ---
 
@@ -696,6 +698,29 @@ en la carpeta `public/`.
   `updates/progress.md`.
 - Estado: ✅
 
+**31/08/2026** — Exportación Excel y PDF de Estadística de Venta
+
+- Se centralizó la ejecución de `sp_Ventas_estadistica` para que consulta web, rango y
+  exportaciones compartan validación, acumulación de ambos turnos y totales. Se validan
+  fechas ISO reales, orden del periodo y un máximo de 366 días.
+- Nuevos endpoints protegidos por permiso y empresa:
+  `POST /api/reports/ventas-estadistica/export/excel` y
+  `POST /api/reports/ventas-estadistica/export/pdf`.
+- El Excel incluye hojas Resumen, Evolución diaria y Datos; valores numéricos, fórmulas,
+  filtros, porcentajes, formato de impresión y gráficas PNG generadas en el servidor.
+- El PDF usa A4 horizontal, KPIs, ranking, dona, evolución, tabla paginada, usuario,
+  fecha de generación y numeración de páginas.
+- La interfaz separa las acciones Excel/PDF, muestra progreso y descarga el nombre de
+  archivo entregado por el servidor. Se reemplazó la exportación CSV anterior.
+- Se añadieron pruebas con `node:test` para reconciliación de totales, archivos válidos
+  y resultados vacíos. La revisión visual verificó las dos páginas PDF y las tres hojas
+  del Excel mediante render a PDF/PNG.
+- Dependencias: `pdfkit` y `pureimage`.
+- Archivos: `server.js`, `lib/ventas-estadistica-report.js`, `public/dashboard.html`,
+  `public/script.js`, `public/style.css`, `test/ventas-estadistica-report.test.js`,
+  `package.json`, `package-lock.json`, `updates/progress.md`.
+- Estado: ✅
+
 ---
 
 ## 7. Próximos pasos
@@ -716,6 +741,7 @@ _(en blanco)_
   a Azure SQL; el backend lee de BD vía `/api/structure`.
 - La autenticación usa sesiones en memoria (no persistidas): reiniciar el servidor
   cierra todas las sesiones; considerar `connect-session-store` para producción.
-- No existen tests ni linter configurados en `package.json` (a mejorar).
+- Existe una suite inicial con `node:test` para la exportación de Estadística de Venta;
+  aún no hay cobertura general del resto del sistema ni linter configurado.
 - La migración de roles y empresas está preparada en `sql/`, pero no se ha ejecutado
   desde este entorno contra Azure SQL; los pasos de activación permanecen en la sección 7.

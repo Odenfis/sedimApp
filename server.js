@@ -5,6 +5,9 @@ const path = require('path');
 const fs = require('fs');
 const ExcelJS = require('exceljs');
 const { getConnection, sql } = require('./db');
+const {
+    normalizeReport, createCharts, createExcelBuffer, createPdfBuffer, reportFilename
+} = require('./lib/ventas-estadistica-report');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1708,6 +1711,83 @@ app.post('/api/cargos/export', isAuthenticated, async (req, res) => {
 
 // =========== REPORTE: ESTADÍSTICA DE VENTA ===========
 const SEDES_VENTAS_PERMITIDAS = ['Cocineria', 'Mar Picante 1', 'Inversiones Abruzzo Sac'];
+const MAX_DIAS_ESTADISTICA_VENTA = 366;
+
+function parseVentasFecha(value, campo) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) {
+        const error = new Error(`${campo} debe tener formato AAAA-MM-DD`);
+        error.status = 400;
+        throw error;
+    }
+    const [anio, mes, dia] = value.split('-').map(Number);
+    const fecha = new Date(Date.UTC(anio, mes - 1, dia));
+    if (fecha.getUTCFullYear() !== anio || fecha.getUTCMonth() !== mes - 1 || fecha.getUTCDate() !== dia) {
+        const error = new Error(`${campo} no es una fecha valida`);
+        error.status = 400;
+        throw error;
+    }
+    return fecha;
+}
+
+function validarVentasFiltros({ empresa, turno, fechaInicio, fechaFin }) {
+    const empresaLimpia = String(empresa || '').trim();
+    if (!SEDES_VENTAS_PERMITIDAS.includes(empresaLimpia)) {
+        const error = new Error('Empresa no permitida'); error.status = 400; throw error;
+    }
+    const turnoInt = Number(turno);
+    if (![0, 1, 2].includes(turnoInt)) {
+        const error = new Error('Turno debe ser 0 (ambos), 1 o 2'); error.status = 400; throw error;
+    }
+    const inicio = parseVentasFecha(fechaInicio, 'fechaInicio');
+    const fin = parseVentasFecha(fechaFin, 'fechaFin');
+    if (fin < inicio) {
+        const error = new Error('La fecha fin no puede ser menor que la fecha inicio'); error.status = 400; throw error;
+    }
+    const dias = Math.floor((fin - inicio) / 86400000) + 1;
+    if (dias > MAX_DIAS_ESTADISTICA_VENTA) {
+        const error = new Error(`El rango maximo permitido es de ${MAX_DIAS_ESTADISTICA_VENTA} dias`); error.status = 400; throw error;
+    }
+    return { empresa: empresaLimpia, turno: turnoInt, fechaInicio, fechaFin, inicio, fin };
+}
+
+async function obtenerEstadisticaVentas(filtros) {
+    const f = validarVentasFiltros(filtros);
+    const pool = await getConnection();
+    const turnos = f.turno === 0 ? [1, 2] : [f.turno];
+    const diario = [];
+    const acumulado = new Map();
+    for (let time = f.inicio.getTime(); time <= f.fin.getTime(); time += 86400000) {
+        const fecha = new Date(time);
+        const dia = fecha.getUTCDate(), mes = fecha.getUTCMonth() + 1, anio = fecha.getUTCFullYear();
+        let totalDia = 0;
+        for (const turno of turnos) {
+            const result = await pool.request()
+                .input('empresa', sql.Char(40), f.empresa)
+                .input('turno', sql.Int, turno)
+                .input('dia', sql.Int, dia)
+                .input('mes', sql.Int, mes)
+                .input('anio', sql.Int, anio)
+                .execute('sp_Ventas_estadistica');
+            result.recordset.forEach(row => {
+                const soles = Number(row.Soles) || 0;
+                totalDia += soles;
+                const key = Number(row.tipo);
+                const current = acumulado.get(key) || { tipo: key, tDeposito: row.tDeposito, Soles: 0 };
+                current.Soles += soles;
+                if (!current.tDeposito && row.tDeposito) current.tDeposito = row.tDeposito;
+                acumulado.set(key, current);
+            });
+        }
+        diario.push({ fecha: `${String(dia).padStart(2, '0')}/${String(mes).padStart(2, '0')}/${anio}`, total: totalDia });
+    }
+    const data = Array.from(acumulado.values());
+    return { data, diario, totalGeneral: diario.reduce((sum, row) => sum + row.total, 0) };
+}
+
+function ventasError(res, error, contexto) {
+    console.error(contexto, error);
+    res.status(error.status || 500).json({ message: error.status ? error.message : 'Error generando estadistica de venta' });
+}
 
 app.get('/api/reports/ventas-estadistica', isAuthenticated, async (req, res) => {
     if (!tienePermiso(req, 'reportes')) return res.status(403).json({ message: 'Sin permisos' });
@@ -1715,36 +1795,13 @@ app.get('/api/reports/ventas-estadistica', isAuthenticated, async (req, res) => 
     if (!empresa || !turno || !dia || !mes || !anio) {
         return res.status(400).json({ message: 'Faltan parámetros: empresa, turno, dia, mes, anio' });
     }
-    if (!SEDES_VENTAS_PERMITIDAS.includes(empresa.trim())) {
-        return res.status(400).json({ message: 'Empresa no permitida' });
-    }
     if (!exigirEmpresa(req, res, empresa, 'nombre_ventas')) return;
-    const turnoInt = parseInt(turno);
-    if (turnoInt !== 1 && turnoInt !== 2 && turnoInt !== 0) {
-        return res.status(400).json({ message: 'Turno debe ser 0 (ambos), 1 o 2' });
-    }
     try {
-        const pool = await getConnection();
-        const turnos = turnoInt === 0 ? [1, 2] : [turnoInt];
-        const combinado = {};
-        for (const t of turnos) {
-            const result = await pool.request()
-                .input('empresa', sql.Char(40), empresa.trim())
-                .input('turno', sql.Int, t)
-                .input('dia', sql.Int, parseInt(dia))
-                .input('mes', sql.Int, parseInt(mes))
-                .input('anio', sql.Int, parseInt(anio))
-                .execute('sp_Ventas_estadistica');
-            result.recordset.forEach(r => {
-                const key = r.tipo;
-                if (!combinado[key]) combinado[key] = { tipo: r.tipo, tDeposito: r.tDeposito, Soles: 0 };
-                combinado[key].Soles += parseFloat(r.Soles) || 0;
-            });
-        }
-        res.json({ data: Object.values(combinado) });
+        const fecha = `${String(anio).padStart(4, '0')}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+        const result = await obtenerEstadisticaVentas({ empresa, turno, fechaInicio: fecha, fechaFin: fecha });
+        res.json({ data: result.data });
     } catch (e) {
-        console.error('Error en estadística de venta:', e);
-        res.status(500).json({ message: 'Error ejecutando estadística de venta' });
+        ventasError(res, e, 'Error en estadistica de venta:');
     }
 });
 
@@ -1754,58 +1811,43 @@ app.get('/api/reports/ventas-estadistica/rango', isAuthenticated, async (req, re
     if (!empresa || !turno || !fInicio || !fFin) {
         return res.status(400).json({ message: 'Faltan parámetros: empresa, turno, fInicio, fFin' });
     }
-    if (!SEDES_VENTAS_PERMITIDAS.includes(empresa.trim())) {
-        return res.status(400).json({ message: 'Empresa no permitida' });
-    }
     if (!exigirEmpresa(req, res, empresa, 'nombre_ventas')) return;
-    const turnoInt = parseInt(turno);
-    if (turnoInt !== 1 && turnoInt !== 2 && turnoInt !== 0) {
-        return res.status(400).json({ message: 'Turno debe ser 0 (ambos), 1 o 2' });
-    }
     try {
-        const pool = await getConnection();
-        const inicio = new Date(fInicio);
-        const fin = new Date(fFin);
-        const diario = [];
-        const acumulado = {};
-        let totalGeneral = 0;
-        const turnos = turnoInt === 0 ? [1, 2] : [turnoInt];
-
-        for (let d = new Date(inicio); d <= fin; d.setDate(d.getDate() + 1)) {
-            const diaN = d.getDate();
-            const mesN = d.getMonth() + 1;
-            const anioN = d.getFullYear();
-            const fechaStr = `${String(diaN).padStart(2, '0')}/${String(mesN).padStart(2, '0')}/${anioN}`;
-            let totalDia = 0;
-            for (const t of turnos) {
-                const result = await pool.request()
-                    .input('empresa', sql.Char(40), empresa.trim())
-                    .input('turno', sql.Int, t)
-                    .input('dia', sql.Int, diaN)
-                    .input('mes', sql.Int, mesN)
-                    .input('anio', sql.Int, anioN)
-                    .execute('sp_Ventas_estadistica');
-                result.recordset.forEach(r => {
-                    const soles = parseFloat(r.Soles) || 0;
-                    totalDia += soles;
-                    const key = r.tipo;
-                    if (!acumulado[key]) acumulado[key] = { tipo: r.tipo, tDeposito: r.tDeposito, Soles: 0 };
-                    acumulado[key].Soles += soles;
-                });
-            }
-            totalGeneral += totalDia;
-            diario.push({ fecha: fechaStr, total: totalDia });
-        }
-        res.json({
-            data: Object.values(acumulado),
-            diario,
-            totalGeneral
-        });
+        res.json(await obtenerEstadisticaVentas({ empresa, turno, fechaInicio: fInicio, fechaFin: fFin }));
     } catch (e) {
-        console.error('Error en rango estadística de venta:', e);
-        res.status(500).json({ message: 'Error ejecutando rango de estadística' });
+        ventasError(res, e, 'Error en rango estadistica de venta:');
     }
 });
+
+async function exportarEstadisticaVentas(req, res, formato) {
+    if (!tienePermiso(req, 'reportes')) return res.status(403).json({ message: 'Sin permisos' });
+    const { empresa, turno, fInicio, fFin } = req.body || {};
+    if (!empresa || turno === undefined || !fInicio || !fFin) return res.status(400).json({ message: 'Faltan parametros de exportacion' });
+    if (!exigirEmpresa(req, res, empresa, 'nombre_ventas')) return;
+    try {
+        const result = await obtenerEstadisticaVentas({ empresa, turno, fechaInicio: fInicio, fechaFin: fFin });
+        const report = normalizeReport({
+            empresa, turno, fechaInicio: fInicio, fechaFin: fFin,
+            tiposCobro: result.data, diario: result.diario,
+            generadoPor: req.session.user.nombre || req.session.user.usuario
+        });
+        const charts = await createCharts(report);
+        const isExcel = formato === 'excel';
+        const buffer = isExcel ? await createExcelBuffer(report, charts) : await createPdfBuffer(report, charts);
+        const extension = isExcel ? 'xlsx' : 'pdf';
+        res.setHeader('Content-Type', isExcel
+            ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            : 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${reportFilename(report, extension)}"`);
+        res.setHeader('Content-Length', buffer.length);
+        res.send(buffer);
+    } catch (e) {
+        ventasError(res, e, `Error exportando estadistica de venta a ${formato}:`);
+    }
+}
+
+app.post('/api/reports/ventas-estadistica/export/excel', isAuthenticated, (req, res) => exportarEstadisticaVentas(req, res, 'excel'));
+app.post('/api/reports/ventas-estadistica/export/pdf', isAuthenticated, (req, res) => exportarEstadisticaVentas(req, res, 'pdf'));
 
 //-------FINAL
 app.listen(PORT, () => console.log(`Servidor en puerto ${PORT}`));
