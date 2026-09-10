@@ -41,7 +41,7 @@ en la carpeta `public/`.
 
 **Scripts (`package.json`):**
 - `npm start` → `node server.js` (puerto `PORT` o 3000)
-- `npm test` → no configurado aún
+- `npm test` → `node --test` (suite de reportes y validación del detalle de cargos)
 
 ---
 
@@ -855,6 +855,46 @@ en la carpeta `public/`.
 - Archivos: public/dashboard.html, public/script.js, public/style.css,
   updates/progress.md.
 - Estado: ✅
+
+---
+
+**10/09/2026** — Rediseño visual de Cargo Caja Resultado
+
+- Año inicial tomado del reloj del navegador, sin valor 2025 ni máximo futuro fijo;
+  se conserva la selección manual durante la navegación.
+- Gráficas en proporción aproximada 65/35, apiladas cuando el contenedor tiene menos
+  de 1000 px. Barras con área de 360 px (300 px en móvil), etiquetas monetarias
+  exteriores adaptadas al espacio, ceros ocultos y tooltips con dos decimales.
+- Dona de hasta 260 px con total central, porcentajes sin solapamiento y Top 8 + Otros.
+  Leyenda HTML desplazable con nombres, importes y porcentajes. Los vacíos muestran
+  un mensaje; las categorías negativas se listan sin dibujar una distribución inválida.
+  Colores y cuadrículas se actualizan al cambiar entre tema claro y oscuro.
+- Detalle de hasta 1440 px y 92dvh, pantalla completa con fichas en móvil, encabezado
+  y resumen visibles, tablas con textos ajustables y encabezados fijos, fecha/hora
+  separadas y un área principal desplazable. Se neutralizan los anchos mínimos de
+  tablas globales únicamente dentro de este modal.
+- La matriz usa botones accesibles para abrir el detalle. Se conservan los filtros de
+  la consulta que generó la matriz; el modal incluye carga, vacío, error/reintento,
+  cancelación y protección contra respuestas obsoletas, Escape/fondo, control del foco
+  y bloqueo del desplazamiento de la página.
+- Se informa el límite existente de 500 movimientos; totales y cantidades provienen
+  del desglose completo. El endpoint de detalle admite mes 0 (periodo completo) y
+  valida enteros de 0 a 12. Sin cambios en SQL de agregación, permisos, formato de
+  respuestas ni exportación Excel.
+- Pruebas: 10/10 aprobadas con `npm test`, incluidas dos nuevas de validación del mes;
+  sintaxis y `git diff --check` correctos. Chrome/Playwright con archivos reales y API
+  simulada: 390/768/1024/1440 px, temas claro/oscuro, zoom equivalente 125/150%,
+  años 2026/2027, selección manual, reconciliación de Otros, doce meses con datos,
+  vacíos, negativos, importes grandes, nombres largos, 500 registros, error/reintento,
+  navegación por teclado y respuestas antiguas resueltas después del cierre o de otra
+  apertura. Capturas revisadas en `/private/tmp/cc-browser-qa`; script de esta sesión
+  `/private/tmp/cc-browser-qa.cjs`.
+- La evidencia corresponde a datos simulados; la comprobación integrada con Azure SQL
+  y datos reales sigue pendiente. Se corrige además la descripción de `npm test`.
+- Archivos: `public/dashboard.html`, `public/script.js`, `public/style.css`, `server.js`,
+  `lib/cargo-resultado-validation.js`, `test/cargo-resultado-validation.test.js`,
+  `updates/progress.md`.
+- Estado: ✅ implementación y validación local / ⏳ contraste con Azure SQL
 
 ---
 

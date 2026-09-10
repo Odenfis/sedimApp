@@ -51,6 +51,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
     });
 
+    inicializarAnioCargo();
+
     // Año reporte
     const yearSelect = document.getElementById('rep-anio');
     const audAnioSelect = document.getElementById('aud-anio');
@@ -1925,6 +1927,19 @@ const MESES_LARGO = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Jul
 
 let ccChartMensual = null;
 let ccChartTipos = null;
+let ccLastQuery = null;
+let ccChartData = null;
+let ccDashboardRequest = 0;
+let ccDetailRequest = 0;
+let ccDetailController = null;
+let ccDetailContext = null;
+let ccDetailTrigger = null;
+let ccPreviousOverflow = '';
+
+function inicializarAnioCargo() {
+    const input = document.getElementById('cc-anio');
+    if (input && !input.value) input.value = new Date().getFullYear();
+}
 
 // Variables gráficas Estadística de Venta
 let veChartDeposit = null;
@@ -1980,9 +1995,11 @@ function ocultarToast() {
 }
 
 async function cargarCargoResultado() {
+    const requestId = ++ccDashboardRequest;
     const filters = getCargoResultadoFilters();
+    const sedeLabel = document.getElementById('cc-sede').selectedOptions[0]?.textContent || 'Todas';
     const btn = document.getElementById('cc-btn-consultar');
-    const btnOriginal = btn ? btn.innerHTML : '';
+    const btnOriginal = '<i class="fas fa-search"></i> Consultar';
     if (btn) {
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Consultando…';
@@ -1999,6 +2016,8 @@ async function cargarCargoResultado() {
             return;
         }
         const data = await res.json();
+        if (requestId !== ccDashboardRequest) return;
+        ccLastQuery = { filters: { ...filters }, sedeLabel };
 
         document.getElementById('cc-total').innerText = fmtMoneda(data.kpis.total);
         document.getElementById('cc-registros').innerText = data.kpis.registros.toLocaleString('es-PE');
@@ -2010,6 +2029,7 @@ async function cargarCargoResultado() {
         console.error(e);
         alert('Error al consultar el dashboard');
     } finally {
+        if (requestId !== ccDashboardRequest) return;
         ocultarToast();
         if (btn) {
             btn.disabled = false;
@@ -2038,15 +2058,15 @@ function renderMatrizCargo(matrix, porMes) {
     let colTotals = new Array(12).fill(0);
     let grandTotal = 0;
 
-    matrix.forEach(row => {
+    matrix.forEach((row, rowIndex) => {
         rows += `<tr style="cursor:pointer;">`;
-        rows += `<td style="padding:8px 10px; border:1px solid var(--border-color); font-weight:600;">${row.tipoCargo}</td>`;
+        rows += `<td style="padding:8px 10px; border:1px solid var(--border-color); font-weight:600;">${escapeHtmlCfg(row.tipoCargo)}</td>`;
         row.meses.forEach((val, i) => {
             colTotals[i] += val;
-            rows += `<td onclick="abrirDetalleCargo('${row.tipoCargo.replace(/'/g, "\\'")}', ${i + 1})" style="padding:8px 10px; border:1px solid var(--border-color); text-align:right; font-variant-numeric: tabular-nums;">${val ? fmtMoneda(val) : '-'}</td>`;
+            rows += `<td style="padding:8px 10px; border:1px solid var(--border-color); text-align:right; font-variant-numeric: tabular-nums;"><button type="button" class="cc-matrix-cell" data-row="${rowIndex}" data-month="${i + 1}" aria-label="${escapeHtmlCfg(row.tipoCargo)} — ${MESES_LARGO[i]}, ${fmtMoneda(val)}">${val ? fmtMoneda(val) : '-'}</button></td>`;
         });
         grandTotal += row.total;
-        rows += `<td onclick="abrirDetalleCargo('${row.tipoCargo.replace(/'/g, "\\'")}', 0)" style="padding:8px 10px; border:1px solid var(--border-color); text-align:right; font-weight:bold; background:var(--accent-light, rgba(0,0,0,.03));">${fmtMoneda(row.total)}</td>`;
+        rows += `<td style="padding:8px 10px; border:1px solid var(--border-color); text-align:right; font-weight:bold; background:var(--accent-light, rgba(0,0,0,.03));"><button type="button" class="cc-matrix-cell" data-row="${rowIndex}" data-month="0" aria-label="${escapeHtmlCfg(row.tipoCargo)} — Total del periodo">${fmtMoneda(row.total)}</button></td>`;
         rows += '</tr>';
     });
 
@@ -2057,122 +2077,201 @@ function renderMatrizCargo(matrix, porMes) {
     foot += '</tr>';
 
     tbody.innerHTML = rows + foot;
+    tbody.onclick = event => {
+        const button = event.target.closest('button[data-row]');
+        if (button) abrirDetalleCargo(matrix[Number(button.dataset.row)].tipoCargo, Number(button.dataset.month), button);
+    };
+}
+
+function ccCompactMoney(value) {
+    return 'S/ ' + new Intl.NumberFormat('es-PE', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
 }
 
 function renderChartsCargo(porMes, matrix) {
+    ccChartData = { porMes, matrix };
     if (typeof Chart === 'undefined') return;
-
     const ctxM = document.getElementById('cc-chart-mensual');
     const ctxT = document.getElementById('cc-chart-tipos');
     if (!ctxM || !ctxT) return;
-
-    if (ccChartMensual) ccChartMensual.destroy();
-    if (ccChartTipos) ccChartTipos.destroy();
-
+    ccChartMensual?.destroy();
+    ccChartTipos?.destroy();
+    ccChartTipos = null;
+    const css = getComputedStyle(document.documentElement);
+    const textColor = css.getPropertyValue('--text-color').trim();
+    const gridColor = css.getPropertyValue('--border-color').trim();
+    const state = (id, message) => {
+        const el = document.getElementById(id);
+        el.textContent = message;
+        el.hidden = !message;
+    };
+    state('cc-monthly-state', porMes.some(value => Number(value) !== 0) ? '' : 'Sin importes para los filtros seleccionados.');
     ccChartMensual = new Chart(ctxM, {
         type: 'bar',
         data: {
             labels: MESES_CORTO,
-            datasets: [{ label: 'Monto por mes', data: porMes, backgroundColor: '#2563eb', borderRadius: 4 }]
+            datasets: [{ label: 'Monto por mes', data: porMes, backgroundColor: '#2563eb', borderRadius: 5, maxBarThickness: 44 }]
         },
         options: {
-            responsive: true,
+            responsive: true, maintainAspectRatio: false,
+            layout: { padding: { top: 28, bottom: 18, right: 14 } },
             plugins: {
                 legend: { display: false },
-                tooltip: {
-                    boxPadding: 8,
-                    padding: 10,
-                    callbacks: {
-                        label: ctx => ` ${ctx.label}: ${fmtMoneda(ctx.parsed.y)}`
+                datalabels: {
+                    display: context => Number(context.dataset.data[context.dataIndex]) !== 0 ? 'auto' : false,
+                    color: textColor, font: { size: 11, weight: '600' },
+                    anchor: context => Number(context.dataset.data[context.dataIndex]) < 0 ? 'start' : 'end',
+                    align: context => Number(context.dataset.data[context.dataIndex]) < 0 ? 'bottom' : 'top',
+                    offset: 5,
+                    formatter: (value, context) => {
+                        const exact = fmtMoneda(value);
+                        const available = (context.chart.chartArea?.width || context.chart.width) / 12 - 4;
+                        context.chart.ctx.font = '600 11px sans-serif';
+                        return context.chart.ctx.measureText(exact).width <= available ? exact : ccCompactMoney(value);
                     }
                 },
-                title: { display: true, text: 'Monto por Mes' }
+                tooltip: { padding: 12, callbacks: { label: context => ` ${context.label}: ${fmtMoneda(context.parsed.y)}` } }
             },
-            scales: { y: { beginAtZero: true } }
+            scales: {
+                x: { grid: { display: false }, ticks: { color: textColor, autoSkip: false, minRotation: context => context.chart.width < 480 ? 45 : 0, maxRotation: 45, font: { size: 11 } } },
+                y: { beginAtZero: true, grace: '15%', border: { display: false }, grid: { color: gridColor }, ticks: { color: textColor, maxTicksLimit: 6, callback: value => ccCompactMoney(value) } }
+            }
         }
     });
 
-    const top = [...matrix].sort((a, b) => b.total - a.total).slice(0, 8);
-    const paleta = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16'];
+    const sorted = matrix.map(row => ({ label: row.tipoCargo, total: Number(row.total) || 0 }))
+        .sort((a, b) => b.total - a.total);
+    const negative = sorted.some(row => row.total < 0);
+    const total = sorted.reduce((sum, row) => sum + row.total, 0);
+    // Negative categories stay individually visible; they cannot form a part-to-whole chart.
+    const entries = negative ? sorted : sorted.filter(row => row.total > 0).slice(0, 8);
+    const remainder = negative ? [] : sorted.filter(row => row.total > 0).slice(8);
+    if (remainder.length) entries.push({ label: 'Otros', total: remainder.reduce((sum, row) => sum + row.total, 0) });
+    document.getElementById('cc-types-description').textContent = negative ? 'Importes por categoría · Incluye ajustes negativos' : 'Top 8 + Otros · Participación del total';
+    document.getElementById('cc-legend-hint').hidden = entries.length <= 4;
+    const palette = ['#2563eb', '#047857', '#b45309', '#dc2626', '#7c3aed', '#0e7490', '#be185d', '#4d7c0f', '#64748b'];
+    const percent = value => (value / total * 100).toLocaleString('es-PE', { maximumFractionDigits: 1 }) + '%';
+    document.getElementById('cc-types-legend').innerHTML = entries.map((row, index) =>
+        `<li><span class="cc-legend-dot" style="background:${palette[index % palette.length]}"></span><span class="cc-legend-name">${escapeHtmlCfg(row.label)}</span><span class="cc-legend-value">${fmtMoneda(row.total)}${!negative && total > 0 ? `<small>${percent(row.total)}</small>` : ''}</span></li>`
+    ).join('');
+    document.getElementById('cc-donut-wrap').hidden = negative || total <= 0;
+    state('cc-types-state', negative ? 'Hay categorías con importes negativos. Se muestran los montos sin porcentajes de distribución.' : total <= 0 ? 'Sin importes para los filtros seleccionados.' : '');
+    if (negative || total <= 0) return;
     ccChartTipos = new Chart(ctxT, {
         type: 'doughnut',
-        data: {
-            labels: top.map(r => r.tipoCargo),
-            datasets: [{ data: top.map(r => r.total), backgroundColor: paleta }]
-        },
+        data: { labels: entries.map(row => row.label), datasets: [{ data: entries.map(row => row.total), backgroundColor: palette, borderWidth: 2, borderColor: css.getPropertyValue('--card-bg').trim() }] },
+        plugins: [{ id: 'ccTotalCenter', afterDraw(chart) {
+            const arc = chart.getDatasetMeta(0).data[0];
+            if (!arc) return;
+            const { ctx } = chart;
+            const available = arc.innerRadius * 1.7;
+            ctx.save(); ctx.fillStyle = textColor; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.font = '500 12px sans-serif'; ctx.fillText('Total', arc.x, arc.y - 14);
+            let size = 16;
+            const label = fmtMoneda(total);
+            while (size > 10) { ctx.font = `700 ${size}px sans-serif`; if (ctx.measureText(label).width <= available) break; size--; }
+            ctx.fillText(ctx.measureText(label).width <= available ? label : ccCompactMoney(total), arc.x, arc.y + 9, available);
+            ctx.restore();
+        } }],
         options: {
-            responsive: true,
+            responsive: true, maintainAspectRatio: false, cutout: '66%',
             plugins: {
-                legend: {
-                    position: 'right',
-                    labels: { boxWidth: 12, boxHeight: 12, padding: 12, usePointStyle: false, font: { size: 11 } }
-                },
-                tooltip: {
-                    boxPadding: 18,
-                    padding: 12,
-                    callbacks: {
-                        label: ctx => ` ${ctx.label}: ${fmtMoneda(ctx.parsed)}`
-                    }
-                },
-                title: { display: true, text: 'Distribución por Tipo de Cargo (Top 8)' }
+                legend: { display: false },
+                datalabels: { color: '#fff', font: { size: 11, weight: '700' }, display: context => Number(context.dataset.data[context.dataIndex]) / total >= .07 ? 'auto' : false, formatter: value => percent(value) },
+                tooltip: { padding: 12, callbacks: { label: context => ` ${fmtMoneda(context.parsed)} · ${percent(context.parsed)}` } }
             }
         }
     });
 }
 
-async function abrirDetalleCargo(tipoCargo, mes) {
-    const mesLabel = mes === 0 ? 'Todo el año' : MESES_LARGO[mes - 1];
-    document.getElementById('cc-detalle-titulo').innerText = `${tipoCargo} — ${mesLabel}`;
-    document.getElementById('modal-cargo-detalle').style.display = 'block';
+new MutationObserver(() => {
+    if (ccChartData) renderChartsCargo(ccChartData.porMes, ccChartData.matrix);
+}).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
+function cerrarDetalleCargo() {
+    const modal = document.getElementById('modal-cargo-detalle');
+    if (modal.style.display === 'none' || !modal.style.display) return;
+    ++ccDetailRequest;
+    ccDetailController?.abort();
+    modal.style.display = 'none';
+    document.body.style.overflow = ccPreviousOverflow;
+    ccDetailTrigger?.focus();
+}
+
+function reintentarDetalleCargo() {
+    if (ccDetailContext) cargarDetalleCargo();
+}
+
+async function abrirDetalleCargo(tipoCargo, mes, trigger = document.activeElement) {
+    const modal = document.getElementById('modal-cargo-detalle');
+    const query = ccLastQuery || { filters: getCargoResultadoFilters(), sedeLabel: document.getElementById('cc-sede').selectedOptions[0]?.textContent || 'Todas' };
+    ccDetailContext = { tipoCargo, mes, filters: { ...query.filters } };
+    const period = mes === 0 ? 'Total del periodo' : MESES_LARGO[mes - 1];
+    document.getElementById('cc-detalle-titulo').textContent = `${tipoCargo} — ${period}`;
+    const dates = [query.filters.fInicio, query.filters.fFin].filter(Boolean).join(' → ');
+    document.getElementById('cc-detalle-contexto').textContent = `${query.sedeLabel} · Año ${query.filters.anio}${dates ? ' · ' + dates : ''}`;
+    if (modal.style.display !== 'flex') {
+        ccDetailTrigger = trigger;
+        ccPreviousOverflow = document.body.style.overflow;
+    }
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    modal.querySelector('.cc-detail-dialog').focus();
+    modal.querySelector('.cc-detail-body').scrollTop = 0;
+    modal.onclick = event => { if (event.target === modal) cerrarDetalleCargo(); };
+    modal.onkeydown = event => {
+        if (event.key === 'Escape') { event.preventDefault(); cerrarDetalleCargo(); }
+        if (event.key === 'Tab') {
+            const focusable = [...modal.querySelectorAll('button, [href], [tabindex="0"]')].filter(el => !el.hidden && el.getClientRects().length);
+            const first = focusable[0], last = focusable[focusable.length - 1];
+            if (event.shiftKey && (document.activeElement === first || document.activeElement === modal.querySelector('.cc-detail-dialog'))) { event.preventDefault(); last?.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+        }
+    };
+    await cargarDetalleCargo();
+}
+
+async function cargarDetalleCargo() {
+    ccDetailController?.abort();
+    ccDetailController = new AbortController();
+    const requestId = ++ccDetailRequest;
+    const body = document.querySelector('#modal-cargo-detalle .cc-detail-body');
+    const status = document.getElementById('cc-detail-status');
+    const retry = document.getElementById('cc-detail-retry');
     const tR = document.querySelector('#cc-detalle-razones tbody');
     const tD = document.querySelector('#cc-detalle-registros tbody');
-    tR.innerHTML = '<tr><td colspan="3" style="text-align:center"><i class="fas fa-spinner fa-spin"></i> Cargando...</td></tr>';
-    tD.innerHTML = '<tr><td colspan="8" style="text-align:center"><i class="fas fa-spinner fa-spin"></i> Cargando...</td></tr>';
-
+    body.setAttribute('aria-busy', 'true');
+    if (document.activeElement === retry) body.focus();
+    status.hidden = false; status.textContent = 'Cargando detalle…'; retry.hidden = true;
+    tR.innerHTML = ''; tD.innerHTML = '';
+    document.getElementById('cc-detail-total').textContent = '—';
+    document.getElementById('cc-detail-count').textContent = '—';
+    document.getElementById('cc-detail-limit').textContent = '';
     try {
         const res = await fetch('/api/cargos/detalle', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tipoCargo, mes, filters: getCargoResultadoFilters() })
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(ccDetailContext), signal: ccDetailController.signal
         });
-        if (!res.ok) return;
+        if (!res.ok) throw new Error(res.status === 403 ? 'No tienes permiso para consultar este detalle.' : 'No se pudo cargar el detalle.');
         const data = await res.json();
-
-        tR.innerHTML = '';
-        if (data.razones.length === 0) {
-            tR.innerHTML = '<tr><td colspan="3" style="text-align:center">Sin datos</td></tr>';
-        } else {
-            data.razones.forEach(r => {
-                tR.innerHTML += `<tr>
-                    <td style="padding:8px; border:1px solid var(--border-color);">${r.razon}</td>
-                    <td style="padding:8px; border:1px solid var(--border-color); text-align:right; font-weight:bold;">${fmtMoneda(r.monto)}</td>
-                    <td style="padding:8px; border:1px solid var(--border-color); text-align:center;">${r.n}</td>
-                </tr>`;
-            });
-        }
-
-        tD.innerHTML = '';
-        if (data.registros.length === 0) {
-            tD.innerHTML = '<tr><td colspan="8" style="text-align:center">Sin registros</td></tr>';
-        } else {
-            data.registros.forEach(r => {
-                tD.innerHTML += `<tr>
-                    <td style="padding:8px; border:1px solid var(--border-color); font-family:monospace;">${r.Documento}</td>
-                    <td style="padding:8px; border:1px solid var(--border-color);">${r.tipoDoc}</td>
-                    <td style="padding:8px; border:1px solid var(--border-color);">${r.fecha}</td>
-                    <td style="padding:8px; border:1px solid var(--border-color);">${r.razon}</td>
-                    <td style="padding:8px; border:1px solid var(--border-color);">${r.destinatario}</td>
-                    <td style="padding:8px; border:1px solid var(--border-color);">${r.empresa}</td>
-                    <td style="padding:8px; border:1px solid var(--border-color);">${r.emp}</td>
-                    <td style="padding:8px; border:1px solid var(--border-color); text-align:right; font-weight:bold;">${fmtMoneda(r.Monto)}</td>
-                </tr>`;
-            });
-        }
-    } catch (e) {
-        console.error(e);
-        tR.innerHTML = '<tr><td colspan="3" style="color:red; text-align:center">Error</td></tr>';
-        tD.innerHTML = '<tr><td colspan="8" style="color:red; text-align:center">Error</td></tr>';
+        if (requestId !== ccDetailRequest) return;
+        const total = data.razones.reduce((sum, row) => sum + Number(row.monto), 0);
+        const count = data.razones.reduce((sum, row) => sum + Number(row.n), 0);
+        document.getElementById('cc-detail-total').textContent = fmtMoneda(total);
+        document.getElementById('cc-detail-count').textContent = count.toLocaleString('es-PE');
+        document.getElementById('cc-detail-limit').textContent = `Mostrando ${data.registros.length.toLocaleString('es-PE')} de ${count.toLocaleString('es-PE')} movimientos${count > 500 && data.registros.length === 500 ? ' · Se incluyen los 500 más recientes.' : ''}`;
+        status.hidden = true;
+        tR.innerHTML = data.razones.length ? data.razones.map(row => `<tr><td>${escapeHtmlCfg(row.razon)}</td><td>${fmtMoneda(row.monto)}</td><td>${Number(row.n).toLocaleString('es-PE')}</td></tr>`).join('') : '<tr><td colspan="3" class="cc-empty">Sin datos</td></tr>';
+        const cell = (label, value, extra = '') => `<td data-label="${label}" ${extra}>${escapeHtmlCfg(value || '—')}</td>`;
+        tD.innerHTML = data.registros.length ? data.registros.map(row => {
+            const [date, ...time] = String(row.fecha || '').split(' ');
+            return `<tr>${cell('Documento', row.Documento, 'class="cc-document"')}${cell('Tipo', row.tipoDoc)}<td data-label="Fecha">${escapeHtmlCfg(date)}<small class="cc-date-time">${escapeHtmlCfg(time.join(' '))}</small></td>${cell('Razón', row.razon)}${cell('Destinatario', row.destinatario)}${cell('Empresa', row.empresa)}${cell('Sede', row.emp)}${cell('Monto', fmtMoneda(row.Monto))}</tr>`;
+        }).join('') : '<tr><td colspan="8" class="cc-empty">Sin movimientos</td></tr>';
+    } catch (error) {
+        if (requestId !== ccDetailRequest || error.name === 'AbortError') return;
+        status.hidden = false; status.textContent = error.message || 'No se pudo cargar el detalle.';
+        retry.hidden = false;
+    } finally {
+        if (requestId === ccDetailRequest) body.setAttribute('aria-busy', 'false');
     }
 }
 

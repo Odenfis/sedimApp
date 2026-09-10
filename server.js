@@ -9,6 +9,7 @@ const {
     normalizeReport, createCharts, createExcelBuffer, createPdfBuffer, reportFilename
 } = require('./lib/ventas-estadistica-report');
 const bancoComparativo = require('./lib/cargos-banco-comparativo-report');
+const { isCargoDetalleMes } = require('./lib/cargo-resultado-validation');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1630,7 +1631,7 @@ app.post('/api/cargos/dashboard', isAuthenticated, async (req, res) => {
 app.post('/api/cargos/detalle', isAuthenticated, async (req, res) => {
     if (!tienePermiso(req, 'reportes')) return res.status(403).json({ message: 'Sin permisos' });
     const { tipoCargo, mes, filters } = req.body;
-    if (!tipoCargo || !mes) return res.status(400).json({ message: 'Faltan parámetros' });
+    if (!tipoCargo || !isCargoDetalleMes(mes)) return res.status(400).json({ message: 'Tipo de cargo requerido y mes entero entre 0 y 12' });
 
     const f = Object.assign({}, filters || {}, { mes: 0, anio: filters && filters.anio ? filters.anio : new Date().getFullYear() });
     if (f.sede && f.sede !== 'all' && !exigirEmpresa(req, res, f.sede, 'tabla200_numero')) return;
