@@ -8,6 +8,7 @@ const { getConnection, sql } = require('./db');
 const {
     normalizeReport, createCharts, createExcelBuffer, createPdfBuffer, reportFilename
 } = require('./lib/ventas-estadistica-report');
+const bancoComparativo = require('./lib/cargos-banco-comparativo-report');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1848,6 +1849,137 @@ async function exportarEstadisticaVentas(req, res, formato) {
 
 app.post('/api/reports/ventas-estadistica/export/excel', isAuthenticated, (req, res) => exportarEstadisticaVentas(req, res, 'excel'));
 app.post('/api/reports/ventas-estadistica/export/pdf', isAuthenticated, (req, res) => exportarEstadisticaVentas(req, res, 'pdf'));
+
+// =========== REPORTE: COMPARATIVO BANCO VS EFECTIVO ===========
+const CBC_MAX_DIAS = 366;
+const CBC_TIPO_DOC = `CASE
+    WHEN UPPER(LTRIM(RTRIM(v.Documento))) LIKE 'BAN%' THEN 'No declaradas'
+    WHEN UPPER(LTRIM(RTRIM(v.Documento))) LIKE 'F%' THEN 'Facturas'
+    WHEN UPPER(LTRIM(RTRIM(v.Documento))) LIKE 'B%' THEN 'Boletas'
+    WHEN UPPER(LTRIM(RTRIM(v.Documento))) LIKE 'N%' THEN 'Notas de Venta'
+    ELSE 'No declaradas' END`;
+const CBC_ES_BANCO = `CASE WHEN RTRIM(v.Razon) LIKE '%(banco)' THEN 1 ELSE 0 END`;
+
+function validarFiltrosComparativo(req, filters = {}) {
+    const fInicio = String(filters.fInicio || ''), fFin = String(filters.fFin || '');
+    const inicio = parseVentasFecha(fInicio, 'fInicio'), fin = parseVentasFecha(fFin, 'fFin');
+    if (fin < inicio) { const error = new Error('La fecha fin no puede ser menor que la fecha inicio'); error.status = 400; throw error; }
+    const dias = Math.floor((fin - inicio) / 86400000) + 1;
+    if (dias > CBC_MAX_DIAS) { const error = new Error(`El rango máximo permitido es de ${CBC_MAX_DIAS} días`); error.status = 400; throw error; }
+    const empresas = req.session.user?.empresas || [];
+    const nombresPermitidos = Array.from(new Set(empresas.flatMap(item => [item.nombre_visible, item.nombre_ventas]).map(value => String(value || '').trim()).filter(Boolean)));
+    const empresa = String(filters.empresa || 'all').trim();
+    if (empresa !== 'all' && !nombresPermitidos.includes(empresa)) { const error = new Error('No tiene acceso a la empresa solicitada'); error.status = 403; throw error; }
+    const tiposDoc = ['', 'Facturas', 'Boletas', 'Notas de Venta', 'No declaradas'];
+    if (!tiposDoc.includes(String(filters.tipoDoc || ''))) { const error = new Error('Tipo de documento no válido'); error.status = 400; throw error; }
+    const estados = ['', 'TODOS', 'AMBOS', 'SOLO_BANCO', 'SOLO_EFECTIVO'];
+    if (!estados.includes(String(filters.estado || ''))) { const error = new Error('Estado de comparación no válido'); error.status = 400; throw error; }
+    const { granularidad, ...cleanFilters } = filters;
+    return { ...cleanFilters, empresa, fInicio, fFin, inicio, fin, nombresPermitidos };
+}
+
+function bindComparativoRequest(request, f) {
+    request.input('fInicio', sql.Date, f.fInicio).input('fFin', sql.Date, f.fFin);
+    f.nombresPermitidos.forEach((nombre, index) => request.input(`cbcEmp${index}`, sql.VarChar(80), nombre));
+    if (f.empresa !== 'all') request.input('cbcEmpresa', sql.VarChar(80), f.empresa);
+    if (f.tipoDoc) request.input('cbcTipoDoc', sql.VarChar(30), f.tipoDoc);
+    if (f.tipoCargo) request.input('cbcTipoCargo', sql.VarChar(80), f.tipoCargo);
+    if (f.razon) request.input('cbcRazon', sql.VarChar(120), String(f.razon).trim());
+    return request;
+}
+
+function whereComparativo(f) {
+    const allowed = f.nombresPermitidos.map((_, index) => `@cbcEmp${index}`).join(', ');
+    let where = `WHERE CAST(v.Fecha AS date) BETWEEN @fInicio AND @fFin`;
+    where += allowed ? ` AND LTRIM(RTRIM(v.Emp)) IN (${allowed})` : ' AND 1 = 0';
+    if (f.empresa !== 'all') where += ' AND LTRIM(RTRIM(v.Emp)) = @cbcEmpresa';
+    if (f.tipoDoc) where += ` AND ${CBC_TIPO_DOC} = @cbcTipoDoc`;
+    if (f.tipoCargo) where += ' AND LTRIM(RTRIM(v.TipoCargo)) = @cbcTipoCargo';
+    if (f.razon) where += ` AND LTRIM(RTRIM(REPLACE(v.Razon COLLATE Latin1_General_100_CI_AI, '(banco)', ''))) LIKE '%' + @cbcRazon + '%'`;
+    return where;
+}
+
+async function cargarComparativoBanco(req, filters, includeDetail = false) {
+    const f = validarFiltrosComparativo(req, filters);
+    const pool = await getConnection();
+    const fechaGrupo = `CONVERT(char(10), CAST(v.Fecha AS date), 23)`;
+    const where = whereComparativo(f);
+    const aggregate = await bindComparativoRequest(pool.request(), f).query(`
+        SELECT LTRIM(RTRIM(v.Emp)) AS Emp, LTRIM(RTRIM(v.TipoCargo)) AS TipoCargo,
+               LTRIM(RTRIM(v.Razon)) AS Razon, ${fechaGrupo} AS FechaGrupo,
+               ${CBC_ES_BANCO} AS EsBanco, SUM(v.Monto) AS Monto, COUNT_BIG(*) AS Registros
+        FROM dbo.v_CargosCajaBanco v
+        ${where}
+        GROUP BY LTRIM(RTRIM(v.Emp)), LTRIM(RTRIM(v.TipoCargo)), LTRIM(RTRIM(v.Razon)),
+                 ${fechaGrupo}, ${CBC_ES_BANCO}`);
+    const report = bancoComparativo.buildComparisonReport(aggregate.recordset, {
+        empresa: f.empresa, fInicio: f.fInicio, fFin: f.fFin,
+        tipoDoc: f.tipoDoc || '', tipoCargo: f.tipoCargo || '', estado: f.estado || 'TODOS', razon: f.razon || ''
+    }, { generadoPor: req.session.user.nombre || req.session.user.usuario });
+    let detail = [];
+    if (includeDetail) {
+        const details = await bindComparativoRequest(pool.request(), f).query(`
+            SELECT v.Documento, ${CBC_TIPO_DOC} AS TipoDoc, LTRIM(RTRIM(v.TipoCargo)) AS TipoCargo,
+                   LTRIM(RTRIM(v.Razon)) AS Razon, v.Fecha, LTRIM(RTRIM(ISNULL(v.Destinatario, ''))) AS Destinatario,
+                   LTRIM(RTRIM(ISNULL(v.Empresa, ''))) AS Empresa, LTRIM(RTRIM(v.Emp)) AS Emp, v.Monto
+            FROM dbo.v_CargosCajaBanco v ${where} ORDER BY v.Fecha DESC, v.Documento`);
+        const visible = new Set(report.comparison.map(row => `${row.empresa.toLocaleUpperCase('es-PE')}|${bancoComparativo.normalizeReason(row.razonBase)}`));
+        detail = details.recordset.filter(row => visible.has(`${String(row.Emp).toLocaleUpperCase('es-PE')}|${bancoComparativo.normalizeReason(row.Razon)}`));
+    }
+    return { report, detail, f };
+}
+
+app.post('/api/reports/cargos-banco-comparativo', isAuthenticated, async (req, res) => {
+    if (!tienePermiso(req, 'reportes')) return res.status(403).json({ message: 'Sin permisos' });
+    try {
+        const { report } = await cargarComparativoBanco(req, req.body?.filters || {});
+        res.json(report);
+    } catch (error) {
+        console.error('Error comparativo banco:', error);
+        res.status(error.status || 500).json({ message: error.status ? error.message : 'Error generando comparativo' });
+    }
+});
+
+app.post('/api/reports/cargos-banco-comparativo/detalle', isAuthenticated, async (req, res) => {
+    if (!tienePermiso(req, 'reportes')) return res.status(403).json({ message: 'Sin permisos' });
+    const razonBase = String(req.body?.razonBase || '').trim();
+    const empresaDetalle = String(req.body?.empresa || req.body?.filters?.empresa || '').trim();
+    if (!razonBase || !empresaDetalle) return res.status(400).json({ message: 'Faltan empresa o razón' });
+    try {
+        const { detail } = await cargarComparativoBanco(req, { ...(req.body?.filters || {}), empresa: empresaDetalle }, true);
+        const reasonKey = bancoComparativo.normalizeReason(razonBase);
+        const rows = detail.filter(row => bancoComparativo.normalizeReason(row.Razon) === reasonKey);
+        const banco = rows.filter(row => bancoComparativo.isBankReason(row.Razon));
+        const efectivo = rows.filter(row => !bancoComparativo.isBankReason(row.Razon));
+        res.json({ banco, efectivo, totals: {
+            montoBanco: banco.reduce((sum, row) => sum + Number(row.Monto || 0), 0),
+            montoEfectivo: efectivo.reduce((sum, row) => sum + Number(row.Monto || 0), 0)
+        } });
+    } catch (error) {
+        console.error('Error detalle comparativo banco:', error);
+        res.status(error.status || 500).json({ message: error.status ? error.message : 'Error cargando detalle' });
+    }
+});
+
+async function exportarComparativoBanco(req, res, format) {
+    if (!tienePermiso(req, 'reportes')) return res.status(403).json({ message: 'Sin permisos' });
+    try {
+        const { report, detail } = await cargarComparativoBanco(req, req.body?.filters || {}, format === 'excel');
+        const charts = await bancoComparativo.createCharts(report);
+        const excel = format === 'excel';
+        const buffer = excel ? await bancoComparativo.createExcel(report, detail, charts) : await bancoComparativo.createPdf(report, charts);
+        const extension = excel ? 'xlsx' : 'pdf';
+        res.setHeader('Content-Type', excel ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${bancoComparativo.reportFilename(report, extension)}"`);
+        res.setHeader('Content-Length', buffer.length); res.send(buffer);
+    } catch (error) {
+        console.error(`Error exportando comparativo ${format}:`, error);
+        res.status(error.status || 500).json({ message: error.status ? error.message : 'Error generando archivo' });
+    }
+}
+
+app.post('/api/reports/cargos-banco-comparativo/export/excel', isAuthenticated, (req, res) => exportarComparativoBanco(req, res, 'excel'));
+app.post('/api/reports/cargos-banco-comparativo/export/pdf', isAuthenticated, (req, res) => exportarComparativoBanco(req, res, 'pdf'));
 
 //-------FINAL
 app.listen(PORT, () => console.log(`Servidor en puerto ${PORT}`));

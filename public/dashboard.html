@@ -168,6 +168,10 @@
                             title="Estadística de Venta">
                             <i class="fas fa-chart-bar"></i> <span>Estadística de Venta</span>
                         </li>
+                        <li onclick="showView('comparativo-banco')" data-module="reportes"
+                            title="Comparativo Banco">
+                            <i class="fas fa-scale-balanced"></i> <span>Comparativo Banco</span>
+                        </li>
                     </ul>
                         </li>
                     </ul>
@@ -1107,6 +1111,62 @@
                 </table>
             </div>
         </div>
+
+            <!-- VISTA: COMPARATIVO BANCO VS EFECTIVO -->
+            <div id="view-comparativo-banco" class="view-section" style="display:none;">
+                <header><h1><i class="fas fa-scale-balanced"></i> Comparativo Banco</h1></header>
+                <div class="report-top-bar cb-top-bar">
+                    <div class="cb-filter-grid">
+                        <div class="filter-mini"><label>EMPRESA</label><select id="cb-empresa"><option value="all">Todas las autorizadas</option></select></div>
+                        <div class="filter-mini"><label>DESDE</label><input type="date" id="cb-fecha-inicio"></div>
+                        <div class="filter-mini"><label>HASTA</label><input type="date" id="cb-fecha-fin"></div>
+                        <div class="filter-mini"><label>TIPO DOC</label><select id="cb-tipo-doc"><option value="">Todos</option><option>Facturas</option><option>Boletas</option><option>Notas de Venta</option><option>No declaradas</option></select></div>
+                        <div class="filter-mini"><label>TIPO CARGO</label><select id="cb-tipo-cargo"><option value="">Todos</option></select></div>
+                        <div class="filter-mini"><label>ESTADO</label><select id="cb-estado"><option value="TODOS">Todos</option><option value="AMBOS">Ambos lados</option><option value="SOLO_BANCO">Solo banco</option><option value="SOLO_EFECTIVO">Solo efectivo</option></select></div>
+                        <div class="filter-mini"><label>BUSCAR RAZÓN</label><input type="search" id="cb-razon" placeholder="Ej. Abarrotes"></div>
+                    </div>
+                    <div class="cb-actions">
+                        <button class="btn-save" id="cb-btn-consultar" onclick="cargarComparativoBanco()"><i class="fas fa-search"></i> Consultar</button>
+                        <button class="btn-save cb-excel" onclick="exportarComparativoBanco('excel', this)"><i class="fas fa-file-excel"></i> Excel</button>
+                        <button class="btn-save cb-pdf" onclick="exportarComparativoBanco('pdf', this)"><i class="fas fa-file-pdf"></i> PDF</button>
+                    </div>
+                </div>
+
+                <div class="cb-kpi-grid">
+                    <article class="cb-kpi"><span>EFECTIVO</span><strong id="cb-total-efectivo">S/ 0.00</strong><small id="cb-reg-efectivo">0 movimientos</small></article>
+                    <article class="cb-kpi cb-kpi-bank"><span>BANCO</span><strong id="cb-total-banco">S/ 0.00</strong><small id="cb-reg-banco">0 movimientos</small></article>
+                    <article class="cb-kpi cb-kpi-difference"><span>DIFERENCIA NETA</span><strong id="cb-diferencia">S/ 0.00</strong><small>Banco menos efectivo</small></article>
+                    <article class="cb-kpi cb-kpi-coverage"><span>COBERTURA</span><strong id="cb-cobertura">0.0%</strong><small>Banco / efectivo</small></article>
+                </div>
+                <div class="cb-status-summary" aria-live="polite">
+                    <span class="cb-status cb-status-both"><b id="cb-count-ambos">0</b> ambos lados</span>
+                    <span class="cb-status cb-status-bank"><b id="cb-count-solo-banco">0</b> solo banco</span>
+                    <span class="cb-status cb-status-efectivo"><b id="cb-count-solo-efectivo">0</b> solo efectivo</span>
+                </div>
+
+                <div class="cb-chart-grid">
+                  <div class="cb-chart-column">
+                    <section class="card-simple cb-chart-card cb-chart-wide">
+                        <div class="cb-chart-heading"><h3>Banco vs. efectivo por razón</h3><div class="cb-chart-controls"><select id="cb-chart-ranking" aria-label="Ordenar razones" onchange="cbChangeReasonControls()"><option value="diferencia">Mayor diferencia</option><option value="efectivo">Mayor efectivo</option><option value="banco">Mayor banco</option></select><input id="cb-chart-search" type="search" aria-label="Buscar en la gráfica por razón o empresa" placeholder="Buscar razón o empresa" oninput="cbChangeReasonControls()"></div></div>
+                        <div class="cb-chart-stage cb-reason-stage"><canvas id="cb-chart-comparison" aria-label="Comparación por razón"></canvas><p class="cb-chart-message" id="cb-message-comparison" role="status" hidden></p></div>
+                        <div class="cb-chart-pager"><button id="cb-reason-prev" type="button" onclick="cbChangePage('reason', -1)">Anterior</button><span id="cb-chart-reason-count" aria-live="polite"></span><button id="cb-reason-next" type="button" onclick="cbChangePage('reason', 1)">Siguiente</button></div>
+                    </section>
+                    <section class="card-simple cb-chart-card cb-chart-wide"><div class="cb-chart-heading"><h3>Evolución del periodo</h3><small id="cb-evolution-granularity"></small></div><div class="cb-chart-stage cb-evolution-stage"><canvas id="cb-chart-evolution"></canvas><p class="cb-chart-message" id="cb-message-evolution" role="status" hidden></p></div></section>
+                  </div>
+                  <div class="cb-chart-column">
+                    <section class="card-simple cb-chart-card"><div class="cb-chart-heading"><h3>Estado de razones</h3></div><div class="cb-chart-stage cb-status-stage"><canvas id="cb-chart-status"></canvas><p class="cb-chart-message" id="cb-message-status" role="status" hidden></p></div><div id="cb-status-legend" class="cb-status-legend"></div></section>
+                    <section class="card-simple cb-chart-card"><div class="cb-chart-heading"><h3>Resumen por tipo de cargo</h3></div><div class="cb-chart-stage cb-types-stage"><canvas id="cb-chart-types"></canvas><p class="cb-chart-message" id="cb-message-types" role="status" hidden></p></div><div class="cb-chart-pager"><button id="cb-types-prev" type="button" onclick="cbChangePage('types', -1)">Anterior</button><span id="cb-types-count" aria-live="polite"></span><button id="cb-types-next" type="button" onclick="cbChangePage('types', 1)">Siguiente</button></div></section>
+                  </div>
+                </div>
+
+                <div class="table-container report-table-container cb-table-wrap">
+                    <table id="cb-table" class="cb-table">
+                        <thead><tr><th>EMPRESA</th><th>TIPO CARGO / RAZÓN</th><th>EFECTIVO</th><th>BANCO</th><th>DIFERENCIA</th><th>VARIACIÓN</th><th>REG. EFECTIVO</th><th>REG. BANCO</th><th>ESTADO</th></tr></thead>
+                        <tbody><tr><td colspan="9" class="empty-state-message">Seleccione filtros y presione Consultar</td></tr></tbody>
+                        <tfoot></tfoot>
+                    </table>
+                </div>
+            </div>
     </div>
 
     <!-- Modales -->
@@ -1212,6 +1272,22 @@
                         <tbody></tbody>
                     </table>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-comparativo-banco" class="modal">
+        <div class="modal-content cb-modal-content" role="dialog" aria-modal="true" aria-labelledby="cb-detail-title" aria-describedby="cb-detail-subtitle" tabindex="-1">
+            <div class="cb-detail-header"><div><h2 id="cb-detail-title">Detalle comparativo</h2><p id="cb-detail-subtitle" class="cb-detail-subtitle"></p></div><button type="button" class="close cb-detail-close" aria-label="Cerrar" onclick="closeComparativoBancoModal()">&times;</button></div>
+            <div class="cb-detail-summary">
+                <article class="cb-summary-cash"><span>Efectivo</span><strong id="cb-detail-efectivo-total">—</strong><small id="cb-detail-efectivo-count">Cargando…</small></article>
+                <article class="cb-summary-bank"><span>Banco</span><strong id="cb-detail-bank-total">—</strong><small id="cb-detail-bank-count">Cargando…</small></article>
+            </div>
+            <div id="cb-detail-status" role="status" aria-live="polite"><span id="cb-detail-status-text"></span><button id="cb-detail-retry" type="button" onclick="retryComparativoDetail()" hidden>Reintentar</button></div>
+            <div class="cb-detail-tabs" role="tablist" aria-label="Movimientos por forma de pago"><button id="cb-tab-efectivo" role="tab" aria-controls="cb-panel-efectivo" type="button" class="active" data-cb-side="efectivo" onclick="selectComparativoDetailTab('efectivo')">Efectivo</button><button id="cb-tab-bank" role="tab" aria-controls="cb-panel-bank" type="button" data-cb-side="bank" onclick="selectComparativoDetailTab('bank')">Banco</button></div>
+            <div class="cb-detail-grid">
+                <section id="cb-panel-efectivo" data-cb-panel="efectivo" role="tabpanel" aria-labelledby="cb-tab-efectivo"><h3>Movimientos en efectivo</h3><div class="cb-detail-table-wrap" tabindex="0" aria-label="Movimientos en efectivo"><table id="cb-detail-efectivo"><thead><tr><th>Documento</th><th>TipoDoc</th><th>Fecha</th><th>TipoCargo</th><th>Proveedor / empresa</th><th>Monto</th></tr></thead><tbody></tbody></table></div></section>
+                <section id="cb-panel-bank" data-cb-panel="bank" role="tabpanel" aria-labelledby="cb-tab-bank"><h3>Movimientos en banco</h3><div class="cb-detail-table-wrap" tabindex="0" aria-label="Movimientos en banco"><table id="cb-detail-bank"><thead><tr><th>Documento</th><th>TipoDoc</th><th>Fecha</th><th>TipoCargo</th><th>Proveedor / empresa</th><th>Monto</th></tr></thead><tbody></tbody></table></div></section>
             </div>
         </div>
     </div>

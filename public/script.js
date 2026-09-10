@@ -379,6 +379,10 @@ function showView(viewName) {
             setDefaultVentasFechas();
             cargarEstadisticaVentas();
         }
+
+        if (viewName === 'comparativo-banco') {
+            inicializarComparativoBanco();
+        }
     }
 
     // 4. Activar visualmente el ítem
@@ -2642,4 +2646,515 @@ async function exportarEstadisticaVentas(formato, btn) {
             btn.innerHTML = original;
         }
     }
+}
+
+// ==========================================
+//  REPORTE: COMPARATIVO BANCO VS EFECTIVO
+// ==========================================
+let cbInitialized = false;
+let cbChartComparison = null;
+let cbChartStatus = null;
+let cbChartEvolution = null;
+let cbChartTypes = null;
+let cbLastReport = null;
+
+function cbDateValue(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+async function inicializarComparativoBanco() {
+    if (cbInitialized) return;
+    cbInitialized = true;
+    const today = new Date();
+    document.getElementById('cb-fecha-inicio').value = cbDateValue(new Date(today.getFullYear(), today.getMonth(), 1));
+    document.getElementById('cb-fecha-fin').value = cbDateValue(today);
+    setupComparativoDetail();
+    await cargarEmpresasComparativoBanco();
+    await cargarComparativoBanco();
+}
+
+async function cargarEmpresasComparativoBanco() {
+    const select = document.getElementById('cb-empresa');
+    try {
+        const response = await fetch('/api/empresas-permitidas');
+        if (!response.ok) return;
+        const empresas = await response.json();
+        const names = [...new Set((empresas || []).map(item => item.nombre_visible || item.nombre_ventas).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+        names.forEach(name => {
+            const option = document.createElement('option');
+            option.value = name;
+            option.textContent = name;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('No se pudieron cargar las empresas del comparativo:', error);
+    }
+}
+
+function getComparativoBancoFilters() {
+    return {
+        empresa: document.getElementById('cb-empresa').value,
+        fInicio: document.getElementById('cb-fecha-inicio').value,
+        fFin: document.getElementById('cb-fecha-fin').value,
+        tipoDoc: document.getElementById('cb-tipo-doc').value,
+        tipoCargo: document.getElementById('cb-tipo-cargo').value,
+        estado: document.getElementById('cb-estado').value,
+        razon: document.getElementById('cb-razon').value.trim()
+    };
+}
+
+function validarComparativoBanco(filters) {
+    if (!filters.fInicio || !filters.fFin) throw new Error('Seleccione el rango de fechas.');
+    const start = new Date(`${filters.fInicio}T00:00:00`);
+    const end = new Date(`${filters.fFin}T00:00:00`);
+    if (end < start) throw new Error('La fecha hasta no puede ser menor que la fecha desde.');
+    if ((end - start) / 86400000 > 365) throw new Error('El periodo máximo permitido es de 366 días.');
+}
+
+function cbPercent(value) {
+    return value == null ? 'N/D' : `${(Number(value) * 100).toFixed(1)}%`;
+}
+
+function cbDestroyCharts() {
+    [cbChartComparison, cbChartStatus, cbChartEvolution, cbChartTypes].forEach(chart => chart?.destroy());
+    cbChartComparison = cbChartStatus = cbChartEvolution = cbChartTypes = null;
+}
+
+const cbLocalCharts = { reasonPage: 0, typesPage: 0 };
+const cbPalette = ['#2563eb', '#10b981'];
+new MutationObserver(() => {
+    const colors = cbChartColors();
+    [cbChartComparison, cbChartEvolution, cbChartStatus, cbChartTypes].forEach(chart => {
+        if (!chart) return;
+        if (chart.options.plugins.legend?.labels) chart.options.plugins.legend.labels.color = colors.text;
+        Object.values(chart.options.scales || {}).forEach(scale => {
+            if (scale.ticks) scale.ticks.color = colors.text;
+            if (scale.grid) scale.grid.color = colors.grid;
+        });
+        chart.update('none');
+    });
+}).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+function cbChartColors() {
+    const css = getComputedStyle(document.documentElement);
+    return { text: css.getPropertyValue('--text-color').trim(), grid: css.getPropertyValue('--border-color').trim() };
+}
+function cbChartMessage(name, text = '') {
+    const message = document.getElementById('cb-message-' + name);
+    message.textContent = text;
+    message.hidden = !text;
+    document.getElementById('cb-chart-' + name).style.visibility = text ? 'hidden' : 'visible';
+}
+function cbAllChartMessages(text) {
+    ['comparison', 'evolution', 'status', 'types'].forEach(name => cbChartMessage(name, text));
+    document.getElementById('cb-status-legend').hidden = Boolean(text);
+}
+function cbShortLabel(value, length = 22) {
+    const text = String(value || '');
+    return text.length > length ? text.slice(0, length - 1) + '…' : text;
+}
+function cbSearchKey(value) {
+    return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+function cbMoneyBounds(rows) {
+    const values = rows.flatMap(row => [Number(row.montoEfectivo || 0), Number(row.montoBanco || 0)]);
+    const low = Math.min(0, ...values), high = Math.max(0, ...values);
+    const step = Math.pow(10, Math.floor(Math.log10(Math.max(high - low, 1)))) / 2;
+    return { min: low < 0 ? Math.floor(low / step) * step : 0, max: high > 0 ? Math.ceil(high / step) * step : low < 0 ? 0 : 1 };
+}
+function cbPairTooltip(rows, title) {
+    return {
+        title: items => {
+            const lines = title(rows[items[0]?.dataIndex]);
+            return (Array.isArray(lines) ? lines : [lines]).flatMap(line => {
+                const wrapped = [''];
+                String(line).split(/\s+/).forEach(word => {
+                    const last = wrapped.length - 1;
+                    if (wrapped[last] && wrapped[last].length + word.length + 1 > 32) wrapped.push(word);
+                    else wrapped[last] += (wrapped[last] ? ' ' : '') + word;
+                });
+                return wrapped;
+            });
+        },
+        label: context => context.dataset.label + ': ' + fmtMoneda(context.raw),
+        afterBody: items => {
+            const row = rows[items[0]?.dataIndex];
+            if (!row) return [];
+            const difference = row.montoBanco - row.montoEfectivo;
+            return ['Diferencia: ' + fmtMoneda(difference), 'Variación: ' + cbPercent(row.montoEfectivo ? difference / row.montoEfectivo : null)];
+        }
+    };
+}
+function cbCommonOptions(horizontal = false) {
+    const colors = cbChartColors();
+    return {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        indexAxis: horizontal ? 'y' : 'x',
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+            datalabels: { display: false },
+            legend: { position: 'bottom', labels: { color: colors.text, usePointStyle: true, boxWidth: 10, padding: 16 } },
+            tooltip: { callbacks: { label: context => context.dataset.label + ': ' + fmtMoneda(context.raw) } }
+        },
+        scales: {
+            x: { grid: { color: colors.grid }, ticks: { color: colors.text, maxTicksLimit: 4, callback: value => fmtMoneda(value) } },
+            y: { grid: { display: false }, ticks: { color: colors.text, autoSkip: false, font: { size: 11 } } }
+        }
+    };
+}
+function cbPairData(rows) {
+    return ['Efectivo', 'Banco'].map((label, index) => ({
+        label, data: rows.map(row => row[index ? 'montoBanco' : 'montoEfectivo']),
+        backgroundColor: cbPalette[index], borderColor: cbPalette[index],
+        borderRadius: 3, maxBarThickness: 13
+    }));
+}
+function cbPager(prefix, page, size, total) {
+    document.getElementById(prefix === 'reason' ? 'cb-chart-reason-count' : 'cb-types-count').textContent =
+        total ? (page * size + 1) + '–' + Math.min((page + 1) * size, total) + ' de ' + total : '0 de 0';
+    document.getElementById('cb-' + prefix + '-prev').disabled = page === 0 || !total;
+    document.getElementById('cb-' + prefix + '-next').disabled = (page + 1) * size >= total;
+}
+function cbRenderReasons() {
+    if (!cbLastReport) return;
+    const ranking = document.getElementById('cb-chart-ranking').value;
+    const search = cbSearchKey(document.getElementById('cb-chart-search').value);
+    const key = ranking === 'efectivo' ? 'montoEfectivo' : ranking === 'banco' ? 'montoBanco' : 'diferenciaAbsoluta';
+    const all = cbLastReport.comparison.filter(row => cbSearchKey(row.razonBase + ' ' + row.empresa).includes(search))
+        .slice().sort((a, b) => b[key] - a[key] || (a.empresa + a.razonBase).localeCompare(b.empresa + b.razonBase, 'es'));
+    cbLocalCharts.reasonPage = Math.min(cbLocalCharts.reasonPage, Math.max(0, Math.ceil(all.length / 10) - 1));
+    const rows = all.slice(cbLocalCharts.reasonPage * 10, (cbLocalCharts.reasonPage + 1) * 10);
+    cbPager('reason', cbLocalCharts.reasonPage, 10, all.length);
+    cbChartMessage('comparison', rows.length ? '' : 'Sin razones para esta selección');
+    const options = cbCommonOptions(true);
+    Object.assign(options.scales.x, cbMoneyBounds(all));
+    options.scales.y.min = 0; options.scales.y.max = 9;
+    options.plugins.tooltip.callbacks = cbPairTooltip(rows, row => row ? [row.razonBase, row.empresa] : '');
+    const mobile = window.innerWidth < 600;
+    const data = { labels: rows.map(row => [cbShortLabel(row.razonBase, mobile ? 15 : 24), cbShortLabel(row.empresa, mobile ? 15 : 24)]), datasets: cbPairData(rows) };
+    if (cbChartComparison) { cbChartComparison.data = data; cbChartComparison.options = options; cbChartComparison.update('none'); }
+    else cbChartComparison = new Chart(document.getElementById('cb-chart-comparison'), { type: 'bar', data, options });
+}
+function cbRenderTypes() {
+    if (!cbLastReport) return;
+    const all = cbLastReport.byType.slice().sort((a, b) => (b.montoBanco + b.montoEfectivo) - (a.montoBanco + a.montoEfectivo));
+    cbLocalCharts.typesPage = Math.min(cbLocalCharts.typesPage, Math.max(0, Math.ceil(all.length / 8) - 1));
+    const rows = all.slice(cbLocalCharts.typesPage * 8, (cbLocalCharts.typesPage + 1) * 8);
+    cbPager('types', cbLocalCharts.typesPage, 8, all.length);
+    cbChartMessage('types', rows.length ? '' : 'Sin tipos de cargo para este periodo');
+    const options = cbCommonOptions(true);
+    Object.assign(options.scales.x, cbMoneyBounds(all));
+    options.scales.y.min = 0; options.scales.y.max = 7;
+    options.plugins.tooltip.callbacks = cbPairTooltip(rows, row => row?.tipoCargo || '');
+    const data = { labels: rows.map(row => cbShortLabel(row.tipoCargo, 18)), datasets: cbPairData(rows) };
+    if (cbChartTypes) { cbChartTypes.data = data; cbChartTypes.options = options; cbChartTypes.update('none'); }
+    else cbChartTypes = new Chart(document.getElementById('cb-chart-types'), { type: 'bar', data, options });
+}
+function cbRenderEvolution() {
+    const grouped = new Map();
+    cbLastReport.evolution.forEach(row => {
+        const point = grouped.get(row.fecha) || { fecha: row.fecha, montoEfectivo: 0, montoBanco: 0 };
+        point.montoEfectivo += Number(row.montoEfectivo); point.montoBanco += Number(row.montoBanco);
+        grouped.set(row.fecha, point);
+    });
+    const rows = [...grouped.values()].sort((a, b) => a.fecha.localeCompare(b.fecha));
+    cbChartMessage('evolution', rows.length ? '' : 'Sin movimientos en este periodo');
+    const options = cbCommonOptions();
+    const colors = cbChartColors();
+    options.scales = {
+        x: { ticks: { color: colors.text, maxTicksLimit: window.innerWidth < 600 ? 4 : 8, maxRotation: 0 }, grid: { display: false } },
+        y: { beginAtZero: true, ticks: { color: colors.text, maxTicksLimit: 5, callback: value => fmtMoneda(value) }, grid: { color: colors.grid } }
+    };
+    options.onResize = chart => { chart.options.scales.x.ticks.maxTicksLimit = chart.width < 500 ? 4 : 8; };
+    options.plugins.tooltip.callbacks = cbPairTooltip(rows, row => row?.fecha || '');
+    const data = { labels: rows.map(row => row.fecha), datasets: cbPairData(rows).map(dataset => ({ ...dataset, tension: 0, fill: false, borderWidth: 2, pointRadius: rows.length > 30 ? 0 : 3, pointHoverRadius: 6 })) };
+    cbChartEvolution?.destroy();
+    cbChartEvolution = new Chart(document.getElementById('cb-chart-evolution'), { type: 'line', data, options });
+}
+function cbRenderStatus() {
+    const states = cbLastReport.kpis.estados;
+    const items = [['Ambos lados', states.AMBOS, '#10b981'], ['Solo banco', states.SOLO_BANCO, '#f59e0b'], ['Solo efectivo', states.SOLO_EFECTIVO, '#2563eb']].filter(item => item[1] > 0);
+    const total = items.reduce((sum, item) => sum + item[1], 0);
+    cbChartMessage('status', total ? '' : 'Sin datos');
+    const legend = document.getElementById('cb-status-legend');
+    legend.replaceChildren();
+    items.forEach(([name, count, color]) => {
+        const line = document.createElement('div'), marker = document.createElement('i'), label = document.createElement('span'), amount = document.createElement('strong');
+        marker.style.backgroundColor = color; label.textContent = name; amount.textContent = count + ' · ' + (count / total * 100).toFixed(1) + '%';
+        line.append(marker, label, amount); legend.append(line);
+    });
+    const centerText = { id: 'cbCenterText', afterDraw(chart) {
+        if (!total || !chart.chartArea) return;
+        const { ctx, chartArea: a } = chart, x = (a.left + a.right) / 2, y = (a.top + a.bottom) / 2;
+        ctx.save(); ctx.textAlign = 'center'; ctx.fillStyle = cbChartColors().text;
+        ctx.font = '700 26px sans-serif'; ctx.fillText(total, x, y);
+        ctx.font = '11px sans-serif'; ctx.fillText('pares empresa–razón', x, y + 21); ctx.restore();
+    } };
+    cbChartStatus?.destroy();
+    cbChartStatus = new Chart(document.getElementById('cb-chart-status'), {
+        type: 'doughnut',
+        data: { labels: items.map(item => item[0]), datasets: [{ data: items.map(item => item[1]), backgroundColor: items.map(item => item[2]), borderWidth: 0 }] },
+        options: { responsive: true, maintainAspectRatio: false, animation: false, cutout: '72%', plugins: { datalabels: { display: false }, legend: { display: false }, tooltip: { callbacks: { label: context => context.label + ': ' + context.raw + ' (' + (context.raw / total * 100).toFixed(1) + '%)' } } } },
+        plugins: [centerText]
+    });
+}
+function renderComparativoBancoCharts(data) {
+    cbLastReport = data;
+    document.getElementById('cb-status-legend').hidden = false;
+    cbLocalCharts.reasonPage = cbLocalCharts.typesPage = 0;
+    cbRenderReasons(); cbRenderEvolution(); cbRenderStatus(); cbRenderTypes();
+}
+function cbChangeReasonControls() {
+    cbLocalCharts.reasonPage = 0;
+    cbRenderReasons();
+}
+function cbChangePage(kind, delta) {
+    const key = kind === 'reason' ? 'reasonPage' : 'typesPage';
+    cbLocalCharts[key] = Math.max(0, cbLocalCharts[key] + delta);
+    if (kind === 'reason') cbRenderReasons(); else cbRenderTypes();
+}
+
+function cbTextCell(text, className = '') {
+    const td = document.createElement('td');
+    td.textContent = text;
+    if (className) td.className = className;
+    return td;
+}
+
+function renderComparativoBancoTable(rows) {
+    const table = document.getElementById('cb-table');
+    const tbody = table.querySelector('tbody');
+    const tfoot = table.querySelector('tfoot');
+    tbody.innerHTML = '';
+    tfoot.innerHTML = '';
+    if (!rows.length) {
+        const tr = document.createElement('tr');
+        const td = cbTextCell('No hay información para los filtros seleccionados.', 'empty-state-message');
+        td.colSpan = 9; tr.appendChild(td); tbody.appendChild(tr); return;
+    }
+    const grouped = new Map();
+    rows.forEach(row => { const items = grouped.get(row.tipoCargo) || []; items.push(row); grouped.set(row.tipoCargo, items); });
+    grouped.forEach((items, type) => {
+        const subtotalEfectivo = items.reduce((sum, row) => sum + Number(row.montoEfectivo || 0), 0);
+        const subtotalBank = items.reduce((sum, row) => sum + Number(row.montoBanco || 0), 0);
+        const groupRow = document.createElement('tr'); groupRow.className = 'cb-group-row';
+        const title = cbTextCell(type); title.colSpan = 2; groupRow.appendChild(title);
+        groupRow.appendChild(cbTextCell(fmtMoneda(subtotalEfectivo), 'cb-money'));
+        groupRow.appendChild(cbTextCell(fmtMoneda(subtotalBank), 'cb-money'));
+        groupRow.appendChild(cbTextCell(fmtMoneda(subtotalBank - subtotalEfectivo), 'cb-money'));
+        const filler = cbTextCell(`${items.length} razones`); filler.colSpan = 4; groupRow.appendChild(filler); tbody.appendChild(groupRow);
+        items.forEach(row => {
+            const tr = document.createElement('tr'); tr.className = 'cb-reason-row'; tr.tabIndex = 0;
+            const open = () => { tr.focus(); abrirDetalleComparativoBanco(row.empresa, row.razonBase); };
+            tr.addEventListener('click', open); tr.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
+            tr.appendChild(cbTextCell(row.empresa));
+            const reason = cbTextCell(row.razonBase); if (row.categoriaDiferente) { reason.title = `Tipos distintos: efectivo (${row.tiposCargoEfectivo.join(', ')}) / banco (${row.tiposCargoBanco.join(', ')})`; reason.innerHTML += ' <i class="fas fa-triangle-exclamation cb-category-warning" aria-label="Tipos de cargo diferentes"></i>'; } tr.appendChild(reason);
+            tr.appendChild(cbTextCell(fmtMoneda(row.montoEfectivo), 'cb-money'));
+            tr.appendChild(cbTextCell(fmtMoneda(row.montoBanco), 'cb-money'));
+            tr.appendChild(cbTextCell(fmtMoneda(row.diferencia), `cb-money ${row.diferencia < 0 ? 'cb-negative' : ''}`));
+            tr.appendChild(cbTextCell(cbPercent(row.variacionPct), 'cb-money'));
+            tr.appendChild(cbTextCell(String(row.registrosEfectivo), 'cb-number'));
+            tr.appendChild(cbTextCell(String(row.registrosBanco), 'cb-number'));
+            const status = cbTextCell(row.estado.replaceAll('_', ' ')); status.innerHTML = `<span class="cb-badge cb-badge-${row.estado.toLowerCase().replaceAll('_', '-')}">${status.textContent}</span>`; tr.appendChild(status);
+            tbody.appendChild(tr);
+        });
+    });
+    const totalEfectivo = rows.reduce((sum, row) => sum + Number(row.montoEfectivo || 0), 0);
+    const totalBank = rows.reduce((sum, row) => sum + Number(row.montoBanco || 0), 0);
+    const totalRegsEfectivo = rows.reduce((sum, row) => sum + Number(row.registrosEfectivo || 0), 0);
+    const totalRegsBank = rows.reduce((sum, row) => sum + Number(row.registrosBanco || 0), 0);
+    const tr = document.createElement('tr'); tr.innerHTML = `<th colspan="2">TOTAL GENERAL</th><th>${fmtMoneda(totalEfectivo)}</th><th>${fmtMoneda(totalBank)}</th><th>${fmtMoneda(totalBank - totalEfectivo)}</th><th>${cbPercent(totalEfectivo ? (totalBank - totalEfectivo) / totalEfectivo : null)}</th><th>${totalRegsEfectivo}</th><th>${totalRegsBank}</th><th></th>`; tfoot.appendChild(tr);
+}
+
+function updateComparativoBanco(data) {
+    cbLastReport = data;
+    cbAppliedFilters = { ...(data.filters || getComparativoBancoFilters()) };
+    const kpis = data.kpis;
+    document.getElementById('cb-total-efectivo').textContent = fmtMoneda(kpis.montoEfectivo);
+    document.getElementById('cb-total-banco').textContent = fmtMoneda(kpis.montoBanco);
+    document.getElementById('cb-diferencia').textContent = fmtMoneda(kpis.diferencia);
+    document.getElementById('cb-cobertura').textContent = cbPercent(kpis.cobertura);
+    document.getElementById('cb-reg-efectivo').textContent = `${kpis.registrosEfectivo} movimientos`;
+    document.getElementById('cb-reg-banco').textContent = `${kpis.registrosBanco} movimientos`;
+    document.getElementById('cb-count-ambos').textContent = kpis.estados.AMBOS;
+    document.getElementById('cb-count-solo-banco').textContent = kpis.estados.SOLO_BANCO;
+    document.getElementById('cb-count-solo-efectivo').textContent = kpis.estados.SOLO_EFECTIVO;
+    const granularityNames = { diaria: 'Vista diaria automática', semanal: 'Vista semanal automática', mensual: 'Vista mensual automática' };
+    document.getElementById('cb-evolution-granularity').textContent = granularityNames[data.metadata?.granularidadAplicada] || '';
+    const typeSelect = document.getElementById('cb-tipo-cargo');
+    const selected = typeSelect.value;
+    const known = new Set([...typeSelect.options].map(option => option.value));
+    (data.byType || []).forEach(row => { if (!known.has(row.tipoCargo)) { const option = document.createElement('option'); option.value = row.tipoCargo; option.textContent = row.tipoCargo; typeSelect.appendChild(option); } });
+    if ([...typeSelect.options].some(option => option.value === selected)) typeSelect.value = selected;
+    renderComparativoBancoCharts(data);
+    renderComparativoBancoTable(data.comparison || []);
+}
+
+async function cargarComparativoBanco() {
+    const filters = getComparativoBancoFilters();
+    try { validarComparativoBanco(filters); } catch (error) { alert(error.message); return; }
+    const button = document.getElementById('cb-btn-consultar');
+    let chartLoadSucceeded = false;
+    const original = button.innerHTML; button.disabled = true; button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Consultando…';
+    cbAllChartMessages('Consultando el periodo…');
+    document.querySelectorAll('.cb-chart-controls input, .cb-chart-controls select, .cb-chart-pager button').forEach(control => { control.disabled = true; });
+    try {
+        const response = await fetch('/api/reports/cargos-banco-comparativo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filters }) });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.message || 'No se pudo consultar el reporte.');
+        updateComparativoBanco(data);
+        chartLoadSucceeded = true;
+    } catch (error) {
+        cbAllChartMessages('No se pudieron actualizar los datos. Vuelva a consultar.');
+        console.error('Error en comparativo banco:', error); alert(error.message || 'No se pudo consultar el reporte.');
+    } finally {
+        button.disabled = false; button.innerHTML = original;
+        document.querySelectorAll('.cb-chart-controls input, .cb-chart-controls select').forEach(control => { control.disabled = !chartLoadSucceeded; });
+    }
+}
+
+function renderComparativoDetailTable(tableId, rows) {
+    const tbody = document.querySelector(`#${tableId} tbody`); tbody.innerHTML = '';
+    if (!rows.length) { const tr = document.createElement('tr'); const td = cbTextCell('Sin movimientos en este lado.', 'empty-state-message'); td.colSpan = 6; tr.appendChild(td); tbody.appendChild(tr); return; }
+    rows.forEach(row => {
+        const tr = document.createElement('tr');
+        const values = [row.Documento, row.TipoDoc, String(row.Fecha || '').slice(0, 10), row.TipoCargo, row.Empresa || row.Emp, fmtMoneda(row.Monto)];
+        const labels = ['Documento', 'TipoDoc', 'Fecha', 'TipoCargo', 'Empresa', 'Monto'];
+        values.forEach((value, index) => { const cell = cbTextCell(value || '—', index === 5 ? 'cb-money' : ''); cell.dataset.label = labels[index]; tr.appendChild(cell); });
+        tbody.appendChild(tr);
+    });
+}
+
+let cbDetailController = null;
+let cbDetailSequence = 0;
+let cbDetailSelection = null;
+let cbDetailReturnFocus = null;
+let cbDetailReady = false;
+let cbAppliedFilters = null;
+
+function selectComparativoDetailTab(side, moveFocus = false) {
+    const modal = document.getElementById('modal-comparativo-banco');
+    modal.querySelectorAll('.cb-detail-tabs button').forEach(button => {
+        const active = button.dataset.cbSide === side;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-selected', String(active));
+        button.tabIndex = active ? 0 : -1;
+        if (active && moveFocus) button.focus();
+    });
+    modal.querySelectorAll('[data-cb-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.cbPanel === side));
+}
+function setupComparativoDetail() {
+    if (cbDetailReady) return;
+    cbDetailReady = true;
+    const modal = document.getElementById('modal-comparativo-banco');
+    const dialog = modal.querySelector('[role="dialog"]');
+    const resize = () => {
+        if (modal.style.display === 'none' || !modal.clientWidth) return;
+        const mobile = Math.min(1440, modal.clientWidth - 48) < 600;
+        dialog.classList.toggle('cb-detail-mobile', mobile);
+        dialog.classList.toggle('cb-detail-wide', !mobile && dialog.clientWidth >= 1280);
+    };
+    const observer = new ResizeObserver(resize);
+    observer.observe(modal); observer.observe(dialog);
+    modal.addEventListener('click', event => { if (event.target === modal) closeComparativoBancoModal(); });
+    modal.addEventListener('keydown', event => {
+        if (event.key === 'Escape') { event.preventDefault(); closeComparativoBancoModal(); return; }
+        if (event.target.matches('[role="tab"]') && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+            event.preventDefault();
+            const side = event.key === 'Home' ? 'efectivo' : event.key === 'End' ? 'bank' : event.target.dataset.cbSide === 'efectivo' ? 'bank' : 'efectivo';
+            selectComparativoDetailTab(side, true);
+        }
+        if (event.key === 'Tab') {
+            const elements = [...dialog.querySelectorAll('button:not(:disabled), [tabindex="0"]')].filter(el => el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden');
+            const first = elements[0], last = elements[elements.length - 1];
+            if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) { event.preventDefault(); last?.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+        }
+    });
+    document.addEventListener('focusin', event => {
+        if (modal.style.display === 'flex' && !dialog.contains(event.target)) dialog.querySelector('.cb-detail-close').focus();
+    });
+}
+function closeComparativoBancoModal() {
+    cbDetailSequence++;
+    cbDetailController?.abort();
+    closeModal('modal-comparativo-banco');
+    document.body.classList.remove('cb-modal-open');
+    if (cbDetailReturnFocus?.isConnected) cbDetailReturnFocus.focus();
+}
+function cbDetailState(state, message = '') {
+    const modal = document.getElementById('modal-comparativo-banco');
+    modal.querySelector('[role="dialog"]').setAttribute('aria-busy', String(state === 'loading'));
+    document.getElementById('cb-detail-status').hidden = state === 'ready';
+    document.getElementById('cb-detail-status-text').textContent = message;
+    document.getElementById('cb-detail-retry').hidden = state !== 'error';
+    modal.querySelector('.cb-detail-grid').hidden = state !== 'ready';
+    modal.querySelector('.cb-detail-tabs').hidden = state !== 'ready';
+}
+async function loadComparativoDetail() {
+    cbDetailController?.abort();
+    cbDetailController = new AbortController();
+    const sequence = ++cbDetailSequence;
+    const selection = cbDetailSelection;
+    cbDetailState('loading', 'Cargando movimientos…');
+    ['efectivo', 'bank'].forEach(side => {
+        document.getElementById('cb-detail-' + side + '-total').textContent = '—';
+        document.getElementById('cb-detail-' + side + '-count').textContent = 'Cargando…';
+        document.querySelector('#cb-detail-' + side + ' tbody').replaceChildren();
+    });
+    try {
+        const response = await fetch('/api/reports/cargos-banco-comparativo/detalle', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filters: selection.filters, razonBase: selection.razonBase }),
+            signal: cbDetailController.signal
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || 'No se pudo cargar el detalle.');
+        if (sequence !== cbDetailSequence) return;
+        const cash = data.efectivo || [], bank = data.banco || [];
+        renderComparativoDetailTable('cb-detail-efectivo', cash);
+        renderComparativoDetailTable('cb-detail-bank', bank);
+        [['efectivo', cash, data.totals?.montoEfectivo], ['bank', bank, data.totals?.montoBanco]].forEach(([side, rows, total]) => {
+            document.getElementById('cb-detail-' + side + '-total').textContent = fmtMoneda(total);
+            document.getElementById('cb-detail-' + side + '-count').textContent = rows.length + (rows.length === 1 ? ' movimiento' : ' movimientos');
+        });
+        cbDetailState('ready');
+    } catch (error) {
+        if (sequence !== cbDetailSequence || error.name === 'AbortError') return;
+        ['efectivo', 'bank'].forEach(side => { document.getElementById('cb-detail-' + side + '-count').textContent = 'Sin cargar'; });
+        cbDetailState('error', error.message || 'No se pudo cargar el detalle.');
+    }
+}
+function retryComparativoDetail() { return loadComparativoDetail(); }
+async function abrirDetalleComparativoBanco(empresa, razonBase) {
+    setupComparativoDetail();
+    const modal = document.getElementById('modal-comparativo-banco');
+    if (!modal.contains(document.activeElement)) cbDetailReturnFocus = document.activeElement;
+    cbDetailSelection = { empresa, razonBase, filters: { ...(cbAppliedFilters || cbLastReport?.filters || {}), empresa } };
+    const filters = cbDetailSelection.filters;
+    document.getElementById('cb-detail-title').textContent = razonBase;
+    document.getElementById('cb-detail-subtitle').textContent = empresa + ' · ' + filters.fInicio + ' al ' + filters.fFin;
+    modal.style.display = 'flex';
+    document.body.classList.add('cb-modal-open');
+    selectComparativoDetailTab('efectivo');
+    modal.querySelector('.cb-detail-close').focus();
+    await loadComparativoDetail();
+}
+
+async function exportarComparativoBanco(format, button) {
+    const filters = getComparativoBancoFilters();
+    try { validarComparativoBanco(filters); } catch (error) { alert(error.message); return; }
+    const extension = format === 'pdf' ? 'pdf' : 'xlsx'; const original = button.innerHTML;
+    button.disabled = true; button.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Generando ${format === 'pdf' ? 'PDF' : 'Excel'}…`;
+    try {
+        const response = await fetch(`/api/reports/cargos-banco-comparativo/export/${format === 'pdf' ? 'pdf' : 'excel'}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filters }) });
+        if (!response.ok) { const error = await response.json().catch(() => ({})); throw new Error(error.message || 'No se pudo generar el archivo.'); }
+        const blob = await response.blob(); const link = document.createElement('a'); link.href = URL.createObjectURL(blob);
+        const disposition = response.headers.get('Content-Disposition') || ''; const match = disposition.match(/filename="?([^";]+)"?/i);
+        link.download = match?.[1] || `ComparativoBanco_${filters.fInicio}_${filters.fFin}.${extension}`;
+        document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(link.href);
+    } catch (error) { console.error('Error exportando comparativo:', error); alert(error.message); }
+    finally { button.disabled = false; button.innerHTML = original; }
 }

@@ -28,7 +28,7 @@ en la carpeta `public/`.
 | Sesiones | `express-session` | ^1.18.2 | Sesiones en memoria (`saveUninitialized:false`) |
 | Hash de contraseñas | `bcryptjs` | ^3.0.3 | Login y creación de usuarios |
 | Base de datos | Azure SQL (SQL Server) | — | Cliente `mssql` ^12.2.0 |
-| Exportación Excel | `exceljs` | ^4.4.0 | Reportes `.xlsx` |
+| Exportación Excel | `exceljs` | ^3.4.0 | Reportes `.xlsx` |
 | Exportación PDF | `pdfkit` | ^0.20.2 | Reportes PDF paginados en backend |
 | Gráficas de exportación | `pureimage` | ^0.4.20 | PNG reutilizable en Excel y PDF |
 | Variables de entorno | `dotenv` | ^17.2.3 | Config en `.env` |
@@ -715,10 +715,145 @@ en la carpeta `public/`.
 - Se añadieron pruebas con `node:test` para reconciliación de totales, archivos válidos
   y resultados vacíos. La revisión visual verificó las dos páginas PDF y las tres hojas
   del Excel mediante render a PDF/PNG.
+- Verificación técnica completada: 3/3 pruebas aprobadas, `node --check` correcto en
+  backend/frontend/exportador, `git diff --check` sin errores y sin fórmulas Excel
+  inválidas detectadas.
+- `npm audit` conserva 2 alertas moderadas en `uuid`, dependencia transitiva de
+  `exceljs`; `npm audit fix` no encontró una actualización compatible. `pdfkit` y
+  `pureimage` no introdujeron alertas adicionales.
 - Dependencias: `pdfkit` y `pureimage`.
 - Archivos: `server.js`, `lib/ventas-estadistica-report.js`, `public/dashboard.html`,
   `public/script.js`, `public/style.css`, `test/ventas-estadistica-report.test.js`,
   `package.json`, `package-lock.json`, `updates/progress.md`.
+- Estado: ✅
+
+**09/09/2026** — Reporte Comparativo Banco vs. Efectivo
+
+- Se agregó el reporte independiente **Comparativo Banco** inmediatamente debajo de
+  **Estadística de Venta** en el menú Reportes, sin modificar el reporte existente.
+- El backend consulta `dbo.v_CargosCajaBanco`, limita las empresas a las autorizadas
+  en la sesión y valida fechas reales, orden del rango y máximo de 366 días.
+- La comparación se centralizó por empresa y razón base: elimina únicamente el sufijo
+  `(banco)`, ignora diferencias de tildes, mayúsculas y espacios, y no aplica
+  coincidencias difusas. `TipoCargo` no bloquea el emparejamiento y sus discrepancias
+  quedan señaladas.
+- Se implementaron los estados `AMBOS`, `SOLO_BANCO` y `SOLO_EFECTIVO`, con montos,
+  diferencia, variación, cobertura y cantidad de movimientos por lado.
+- `TipoDoc` se clasifica antes de agregar: `BAN*` y prefijos desconocidos son
+  **No declaradas**; `F*`, `B*` y `N*` son Facturas, Boletas y Notas de Venta.
+- Endpoints protegidos por sesión y permiso `reportes`:
+  `POST /api/reports/cargos-banco-comparativo`, `/detalle`, `/export/excel` y
+  `/export/pdf`. Los filtros SQL se envían como parámetros y el navegador no aporta
+  totales calculados.
+- La vista incluye filtros, cuatro KPIs, conteos por estado, cuatro gráficas, tabla
+  jerárquica expandible y detalle Banco/Efectivo. El diseño se adapta a escritorio,
+  tablet y móvil.
+- Excel incluye `Resumen`, `Comparativo`, `Detalle` y `Evolución`, con importes y
+  porcentajes numéricos, filtros, encabezados inmovilizados, gráficas y configuración
+  horizontal. PDF usa A4 horizontal, portada ejecutiva, tabla paginada, anexo de
+  razones sin pareja, usuario y numeración.
+- Se añadieron pruebas de normalización, clasificación documental, estados, filtros y
+  generación de archivos. Verificación completada: 7/7 pruebas del proyecto aprobadas,
+  validación sintáctica correcta y `git diff --check` sin errores. La revisión visual
+  comprobó las 4 páginas PDF y las 4 hojas Excel renderizadas.
+- Pendiente operativo: ejecutar una consulta autenticada contra Azure SQL con datos
+  reales para contrastar los totales finales y probar el rechazo 403 de una empresa
+  manipulada.
+- Archivos: `server.js`, `lib/cargos-banco-comparativo-report.js`,
+  `public/dashboard.html`, `public/script.js`, `public/style.css`,
+  `test/cargos-banco-comparativo-report.test.js`, `updates/progress.md`.
+- Estado: ✅ implementación local / ⏳ validación integrada con Azure SQL
+
+**09/09/2026** — Terminología Banco vs. Efectivo
+
+- Se adoptó integralmente la denominación **Efectivo** para el lado sin sufijo en la vista,
+  filtros, KPIs, gráficas, tabla, detalle, Excel, PDF, pruebas y documentación.
+- El contrato del API también fue actualizado: `montoEfectivo`,
+  `registrosEfectivo`, `tiposCargoEfectivo`, `SOLO_EFECTIVO` y `efectivo` reemplazan
+  los nombres anteriores. Este cambio es incompatible con consumidores externos que
+  todavía utilicen el contrato previo.
+- La regla de datos permanece intacta: Efectivo comprende las razones que no terminan
+  en `(banco)`; la diferencia sigue calculándose como Banco menos Efectivo.
+- Estado: ✅
+
+**09/09/2026** — Mejora de gráficas densas y detalle responsive
+
+- Se eliminó el selector manual de agrupación. La evolución ahora elige automáticamente
+  vista diaria hasta 45 días, semanal entre 46 y 180, y mensual entre 181 y 366 días;
+  la agrupación aplicada se informa en web, Excel y PDF.
+- La comparación gráfica permite ordenar por diferencia, efectivo o banco y alternar
+  entre Top 12, Top 25 y todas las razones. La vista completa usa altura dinámica y
+  desplazamiento vertical para evitar etiquetas comprimidas.
+- La dona oculta estados sin datos, muestra porcentajes y total central. El resumen por
+  TipoCargo conserva los ocho principales, agrupa el resto en Otros y permite filtrar
+  pulsando una barra. La evolución limita etiquetas y puntos visibles según densidad.
+- Se corrigió el detalle observado en móvil: el modal ocupa la pantalla completa,
+  presenta pestañas Efectivo/Banco y convierte cada movimiento en una ficha legible sin
+  desplazamiento horizontal. En escritorio conserva ambas tablas en paralelo.
+- Se añadieron cierre por fondo/Escape, bloqueo del scroll de la página, encabezados
+  fijos, totales por pestaña y estados de carga/vacío.
+- Verificación automatizada: 8/8 pruebas aprobadas, incluyendo límites de agrupación
+  automática; sintaxis y formato sin errores.
+- Estado: ✅
+
+---
+
+**09/09/2026** — Gráficas independientes y navegación por páginas
+
+- Se reemplazó la cuadrícula de filas compartidas por dos columnas independientes
+  en escritorio y una columna en tablet/móvil. Cada área gráfica mantiene su altura.
+- Razones: páginas de 10, búsqueda local por razón/empresa, orden por diferencia,
+  efectivo o banco, etiquetas con empresa y escala monetaria común entre páginas.
+  Se retiraron Top 12/25/Todas y el scroll del canvas.
+- TipoCargo: páginas de ocho categorías reales, sin agrupación artificial Otros ni
+  cambios de filtros al pulsar barras. Sus controles actualizan solo esa instancia.
+- Se deshabilitó el complemento global de etiquetas únicamente en las cuatro gráficas
+  del comparativo. Los tooltips conjuntos muestran importes con dos decimales,
+  diferencia y variación; los títulos largos se distribuyen en varias líneas.
+- Evolución con líneas rectas sin relleno, límite responsive de fechas y conservación
+  de picos; dona compacta con total de pares empresa–razón y leyenda externa.
+- Se añadieron estados por tarjeta para carga, ausencia de datos y error, con
+  recuperación tras una consulta exitosa y colores adaptables a ambos temas.
+- Verificación: 8/8 pruebas existentes aprobadas; sintaxis y formato correctos.
+  Prueba de Chrome con la página y archivos reales del proyecto y datos simulados:
+  390, 768, 1024 y 1440 px, temas claro/oscuro, 0/1/10/11/153 razones, nombres
+  repetidos, ceros, negativos, decimales extensos y evolución con un día/pico elevado.
+- Se comprobaron navegación, última página, búsqueda, ranking, tooltips táctiles,
+  estabilidad de escala/altura e identidad de las otras instancias. Las acciones
+  locales generaron cero solicitudes API. También se probaron error de consulta
+  y recuperación. Capturas por tarjeta revisadas en la carpeta temporal
+  /private/tmp/cb-charts-browser-qa; prueba reproducible de esta sesión:
+  /private/tmp/cb-charts-browser-qa.cjs.
+- No se modificaron endpoints, respuestas, cálculos ni exportaciones en este ajuste.
+  La evidencia visual corresponde a datos simulados, no a una consulta Azure SQL.
+- Archivos: public/dashboard.html, public/script.js, public/style.css,
+  updates/progress.md.
+- Estado: ✅
+
+---
+
+**09/09/2026** — Detalle comparativo amplio y adaptable
+
+- Se corrigió la interferencia de la regla global de `.modal-content` que limitaba
+  el detalle a 400 px. El diálogo ahora usa el ancho disponible hasta 1440 px,
+  con altura máxima del 92% y desplazamiento interno controlado.
+- El encabezado muestra razón, empresa y periodo; el resumen mantiene siempre
+  visibles las tarjetas Efectivo/Banco con importe y cantidad de movimientos.
+- En escritorio amplio se muestran ambas tablas en paralelo; en anchos intermedios
+  se usan pestañas y en móviles el detalle se transforma en fichas sin desplazamiento
+  horizontal. Se eliminaron anchos mínimos rígidos y se forzó el ajuste de documentos,
+  proveedores y categorías extensos.
+- Se añadieron encabezados fijos, estados explícitos de carga, error con Reintentar,
+  vacío por cada lado, protección contra respuestas obsoletas, cierre con Escape,
+  devolución del foco a la fila, navegación accesible de pestañas y foco contenido.
+- Verificación de navegador con Playwright usando la página real y datos simulados:
+  390, 768, 1024 y 1440 px, temas claro/oscuro, detalle Chuleta promo
+  (Efectivo S/ 80.30 y Banco S/ 40.00), 200 movimientos, documentos largos,
+  zoom equivalente 125/150%, lado vacío, error/reintento y respuestas lentas.
+  Resultado: PASS; sin desbordamiento horizontal ni recortes en las capturas de
+  `/private/tmp/cb-detail-browser-qa`.
+- Archivos: public/dashboard.html, public/script.js, public/style.css,
+  updates/progress.md.
 - Estado: ✅
 
 ---
@@ -729,6 +864,11 @@ en la carpeta `public/`.
 2. Ejecutar `sql/verificacion_roles_empresa.sql`; antes de habilitar usuarios restringidos, su consulta de "sin empresa" debe quedar vacía y las equivalencias de `Tablas(200)` deben aparecer como `OK`.
 3. Asignar empresas a cada Operador/Supervisor desde Usuarios del Sistema y pedirles volver a iniciar sesión para renovar su alcance.
 4. Realizar pruebas funcionales por rol, incluidas peticiones alteradas con empresas no asignadas (deben devolver 403).
+5. Ejecutar una descarga autenticada de Excel y PDF de Estadística de Venta contra
+   Azure SQL con datos reales y contrastar los totales con la vista web.
+6. Validar Comparativo Banco contra `dbo.v_CargosCajaBanco` en Azure SQL: contrastar
+   un caso `AMBOS`, uno `SOLO_BANCO`, uno `SOLO_EFECTIVO` y comprobar el 403 con una
+   empresa no asignada.
 
 _(en blanco)_
 
@@ -741,7 +881,7 @@ _(en blanco)_
   a Azure SQL; el backend lee de BD vía `/api/structure`.
 - La autenticación usa sesiones en memoria (no persistidas): reiniciar el servidor
   cierra todas las sesiones; considerar `connect-session-store` para producción.
-- Existe una suite inicial con `node:test` para la exportación de Estadística de Venta;
-  aún no hay cobertura general del resto del sistema ni linter configurado.
+- Existe una suite `node:test` para Estadística de Venta y Comparativo Banco; aún no
+  hay cobertura general del resto del sistema ni linter configurado.
 - La migración de roles y empresas está preparada en `sql/`, pero no se ha ejecutado
   desde este entorno contra Azure SQL; los pasos de activación permanecen en la sección 7.

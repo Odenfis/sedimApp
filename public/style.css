@@ -27,6 +27,135 @@
     --sidebar-width-collapsed: 70px;
 }
 
+/* Comparativo Banco */
+.cb-top-bar { display:flex; gap:18px; align-items:flex-end; margin-bottom:18px; }
+.cb-filter-grid { flex:1; display:grid; grid-template-columns:repeat(4,minmax(150px,1fr)); gap:12px; }
+.cb-filter-grid .filter-mini { display:flex; flex-direction:column; gap:5px; }
+.cb-filter-grid label { font-size:.72rem; font-weight:800; color:var(--text-secondary); letter-spacing:.04em; }
+.cb-filter-grid input,.cb-filter-grid select { width:100%; min-height:38px; border:1px solid var(--border-color); border-radius:8px; padding:7px 9px; background:var(--card-bg); color:var(--text-color); }
+.cb-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.cb-actions button { white-space:nowrap; }
+.cb-excel { background:#15803d!important; }
+.cb-pdf { background:#b91c1c!important; }
+.cb-kpi-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; margin-bottom:12px; }
+.cb-kpi { background:var(--card-bg); border:1px solid var(--border-color); border-top:4px solid #2563eb; border-radius:12px; padding:16px 18px; box-shadow:var(--shadow); }
+.cb-kpi span,.cb-kpi small { display:block; color:var(--text-secondary); }
+.cb-kpi span { font-size:.73rem; font-weight:800; letter-spacing:.06em; }
+.cb-kpi strong { display:block; font-size:1.55rem; margin:7px 0 3px; font-variant-numeric:tabular-nums; }
+.cb-kpi-bank { border-top-color:#10b981; }.cb-kpi-difference { border-top-color:#dc2626; }.cb-kpi-coverage { border-top-color:#8b5cf6; }
+.cb-status-summary { display:flex; flex-wrap:wrap; gap:9px; margin:0 0 16px; }
+.cb-status { border-radius:999px; padding:7px 12px; font-size:.84rem; font-weight:600; }
+.cb-status-both { background:#d1fae5; color:#065f46; }.cb-status-bank { background:#fef3c7; color:#92400e; }.cb-status-efectivo { background:#dbeafe; color:#1e40af; }
+.cb-chart-grid { display:grid; grid-template-columns:minmax(0,2fr) minmax(0,1fr); gap:16px; margin-bottom:16px; align-items:start; }
+.cb-chart-column { display:flex; flex-direction:column; gap:16px; min-width:0; }
+.cb-chart-card { min-width:0; padding:16px; }.cb-chart-card h3 { margin:0; font-size:1rem; }
+.cb-chart-heading { min-height:44px; display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:10px; }
+.cb-chart-heading small { display:block; margin-top:5px; color:var(--text-secondary); }
+.cb-chart-controls { display:flex; gap:7px; flex-wrap:wrap; justify-content:flex-end; }
+.cb-chart-controls select,.cb-chart-controls input { min-height:38px; width:190px; max-width:100%; min-width:0; border:1px solid var(--border-color); border-radius:7px; padding:5px 8px; background:var(--card-bg); color:var(--text-color); box-sizing:border-box; }
+.cb-chart-fixed { height:300px; }
+.cb-chart-stage { position:relative; min-width:0; }
+.cb-reason-stage { height:480px; }
+.cb-evolution-stage { height:320px; }
+.cb-types-stage { height:400px; }
+.cb-status-stage { height:240px; }
+.cb-chart-message { position:absolute; inset:0; margin:0; display:flex; align-items:center; justify-content:center; text-align:center; padding:24px; color:var(--text-secondary); background:var(--card-bg); }
+.cb-chart-message[hidden] { display:none; }
+.cb-chart-pager { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid var(--border-color); font-size:.8rem; }
+.cb-chart-pager button { min-height:40px; padding:6px 10px; border:1px solid var(--border-color); border-radius:8px; background:var(--card-bg); color:var(--text-color); cursor:pointer; }
+.cb-chart-pager button:disabled { opacity:.45; cursor:default; }
+.cb-chart-pager button:focus-visible,.cb-chart-controls :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.cb-status-legend { margin-top:16px; }
+.cb-status-legend > div { display:flex; align-items:center; gap:8px; padding:8px 0; font-size:.82rem; }
+.cb-status-legend i { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.cb-status-legend strong { margin-left:auto; white-space:nowrap; font-variant-numeric:tabular-nums; }
+@media (max-width:1100px) { .cb-chart-grid { grid-template-columns:minmax(0,1fr); } }
+@media (max-width:600px) { .cb-reason-stage { height:520px; }.cb-chart-card { padding:12px; }.cb-chart-controls input,.cb-chart-controls select { width:100%; flex:1 1 100%; }.cb-chart-heading { flex-direction:column; } }
+.cb-table-wrap { max-height:650px; overflow:auto; }
+.cb-table { width:100%; border-collapse:collapse; min-width:1050px; }
+.cb-table th,.cb-table td { border:1px solid var(--border-color); padding:9px 10px; }
+.cb-table thead { position:sticky; top:0; z-index:2; background:var(--table-header-bg); }
+.cb-table tfoot { font-weight:800; background:var(--table-header-bg); }
+.cb-group-row { background:color-mix(in srgb,var(--accent) 12%,var(--card-bg)); font-weight:800; }
+.cb-reason-row { cursor:pointer; }.cb-reason-row:hover,.cb-reason-row:focus { background:color-mix(in srgb,var(--accent) 7%,transparent); outline:none; }
+.cb-money,.cb-number { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }.cb-negative { color:#dc2626; }
+.cb-category-warning { color:#f59e0b; margin-left:5px; }
+.cb-badge { display:inline-block; border-radius:999px; padding:4px 8px; font-size:.7rem; font-weight:800; white-space:nowrap; }
+.cb-badge-ambos { background:#d1fae5; color:#065f46; }.cb-badge-solo-banco { background:#fef3c7; color:#92400e; }.cb-badge-solo-efectivo { background:#dbeafe; color:#1e40af; }
+/* Scoped detail rules take precedence over the shared modal styles. */
+#modal-comparativo-banco { align-items:center; justify-content:center; }
+#modal-comparativo-banco .cb-modal-content {
+    width:min(1440px,calc(100% - 48px)); max-width:none; margin:0; padding:0;
+    max-height:92vh; max-height:92dvh; display:flex; flex-direction:column;
+    overflow:hidden; box-sizing:border-box; container-type:inline-size;
+}
+#modal-comparativo-banco .cb-detail-header { display:flex; flex-shrink:0; align-items:flex-start; justify-content:space-between; gap:16px; padding:22px 24px 16px; border-bottom:1px solid var(--border-color); }
+#modal-comparativo-banco .cb-detail-header > div { min-width:0; }
+#modal-comparativo-banco .cb-detail-header h2 { display:block; padding:0; border:0; margin:0; font-size:1.3rem; line-height:1.3; overflow-wrap:anywhere; }
+#modal-comparativo-banco .cb-detail-subtitle { margin:6px 0 0; color:var(--text-secondary); font-size:.88rem; line-height:1.5; }
+#modal-comparativo-banco .cb-detail-close { flex:0 0 40px; width:40px; height:40px; padding:0; margin:0; border:0; border-radius:10px; background:var(--table-header-bg); color:var(--text-color); font-size:28px; }
+#modal-comparativo-banco .cb-detail-summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; padding:18px 24px; flex-shrink:0; }
+#modal-comparativo-banco .cb-detail-summary article { border:1px solid var(--border-color); border-left:4px solid #2563eb; background:var(--table-header-bg); border-radius:10px; padding:12px 16px; min-width:0; }
+#modal-comparativo-banco .cb-detail-summary .cb-summary-bank { border-left-color:#10b981; }
+#modal-comparativo-banco .cb-detail-summary span { font-size:.85rem; font-weight:700; }
+#modal-comparativo-banco .cb-detail-summary strong { display:block; margin:6px 0; white-space:nowrap; font-variant-numeric:tabular-nums; font-size:clamp(1rem,2.4cqi,1.55rem); }
+#modal-comparativo-banco .cb-detail-summary small { color:var(--text-secondary); }
+#modal-comparativo-banco .cb-detail-tabs { display:flex; flex-shrink:0; gap:8px; padding:0 24px; border-bottom:1px solid var(--border-color); }
+#modal-comparativo-banco .cb-detail-tabs button { min-height:44px; flex:1; border:0; border-bottom:3px solid transparent; background:transparent; color:var(--text-secondary); font-weight:700; cursor:pointer; }
+#modal-comparativo-banco .cb-detail-tabs button.active { color:var(--accent); border-bottom-color:var(--accent); }
+#modal-comparativo-banco .cb-detail-grid { display:flex; min-height:0; padding:16px 24px 24px; gap:20px; overflow:hidden; }
+#modal-comparativo-banco .cb-detail-grid section { display:none; flex:1; flex-direction:column; min-width:0; min-height:0; }
+#modal-comparativo-banco .cb-detail-grid section.active { display:flex; }
+#modal-comparativo-banco .cb-detail-grid h3 { margin:0 0 12px; font-size:.95rem; display:none; }
+#modal-comparativo-banco .cb-detail-table-wrap { min-height:0; overflow:auto; border:1px solid var(--border-color); border-radius:8px; }
+#modal-comparativo-banco table { width:100%; min-width:0; table-layout:fixed; border-collapse:collapse; margin:0; }
+#modal-comparativo-banco thead { position:sticky; top:0; z-index:1; background:var(--table-header-bg); }
+#modal-comparativo-banco th,#modal-comparativo-banco td { padding:10px 8px; border:0; border-bottom:1px solid var(--border-color); font-size:.8rem; vertical-align:top; overflow-wrap:anywhere; }
+#modal-comparativo-banco td { min-width:0; max-width:100%; white-space:normal !important; word-break:break-word; overflow-wrap:anywhere; }
+#modal-comparativo-banco th { text-align:left; font-size:.72rem; }
+#modal-comparativo-banco th:nth-child(1) { width:18%; }
+#modal-comparativo-banco th:nth-child(2) { width:13%; }
+#modal-comparativo-banco th:nth-child(3) { width:13%; }
+#modal-comparativo-banco th:nth-child(4) { width:15%; }
+#modal-comparativo-banco th:nth-child(5) { width:23%; }
+#modal-comparativo-banco th:nth-child(6) { width:18%; text-align:right; }
+#modal-comparativo-banco td.cb-money { white-space:nowrap; font-variant-numeric:tabular-nums; text-align:right; }
+#modal-comparativo-banco tbody tr:last-child td { border-bottom:0; }
+#modal-comparativo-banco tbody tr:nth-child(even) { background:var(--table-header-bg); }
+#modal-comparativo-banco .empty-state-message { text-align:center; padding:26px 12px; }
+#modal-comparativo-banco #cb-detail-status { padding:16px 24px; color:var(--text-secondary); flex-shrink:0; }
+#modal-comparativo-banco #cb-detail-retry { margin-left:12px; padding:8px 14px; border:1px solid var(--border-color); border-radius:8px; background:var(--card-bg); color:var(--text-color); }
+#modal-comparativo-banco [hidden] { display:none!important; }
+#modal-comparativo-banco :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+#modal-comparativo-banco .cb-modal-content.cb-detail-wide .cb-detail-tabs { display:none; }
+#modal-comparativo-banco .cb-detail-wide .cb-detail-grid section { display:flex; }
+#modal-comparativo-banco .cb-detail-wide .cb-detail-grid h3 { display:block; }
+#modal-comparativo-banco .cb-modal-content.cb-detail-mobile { width:100%; height:100dvh; max-height:100dvh; border:0; border-radius:0; animation:none; }
+#modal-comparativo-banco .cb-detail-mobile .cb-detail-header { padding:16px; }
+#modal-comparativo-banco .cb-detail-mobile .cb-detail-summary { padding:12px 16px; gap:10px; }
+#modal-comparativo-banco .cb-detail-mobile .cb-detail-summary article { padding:10px; }
+#modal-comparativo-banco .cb-detail-mobile .cb-detail-grid { padding:12px 16px; }
+#modal-comparativo-banco .cb-detail-mobile .cb-detail-table-wrap { border:0; }
+#modal-comparativo-banco .cb-detail-mobile .cb-detail-table-wrap { width:100%; max-width:100%; overflow-x:hidden; }
+#modal-comparativo-banco .cb-detail-mobile table,#modal-comparativo-banco .cb-detail-mobile tbody { display:block; width:100%; max-width:100%; table-layout:fixed; }
+#modal-comparativo-banco .cb-detail-mobile thead { display:none; }
+#modal-comparativo-banco .cb-detail-mobile tr { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,auto); gap:10px 12px; margin-bottom:12px; padding:14px; border:1px solid var(--border-color); border-radius:10px; background:var(--card-bg); max-width:100%; min-width:0; overflow:hidden; box-sizing:border-box; }
+#modal-comparativo-banco .cb-detail-mobile td { display:block; padding:0; border:0; min-width:0; max-width:100%; white-space:normal !important; word-break:break-word; overflow-wrap:anywhere; }
+#modal-comparativo-banco .cb-detail-mobile td.cb-money { white-space:normal !important; text-align:right; overflow-wrap:anywhere; }
+#modal-comparativo-banco .cb-detail-mobile td::before { display:block; content:attr(data-label); color:var(--text-secondary); font-size:.68rem; margin-bottom:3px; }
+#modal-comparativo-banco .cb-detail-mobile td:nth-child(1) { grid-column:1; grid-row:1; font-weight:700; }
+#modal-comparativo-banco .cb-detail-mobile td:nth-child(6) { grid-column:2; grid-row:1; font-weight:700; }
+#modal-comparativo-banco .cb-detail-mobile td:nth-child(3) { grid-column:1; grid-row:2; }
+#modal-comparativo-banco .cb-detail-mobile td:nth-child(2) { grid-column:2; grid-row:2; }
+#modal-comparativo-banco .cb-detail-mobile td:nth-child(4),#modal-comparativo-banco .cb-detail-mobile td:nth-child(5),#modal-comparativo-banco .cb-detail-mobile .empty-state-message { grid-column:1 / -1; }
+@container (max-width:380px) { #modal-comparativo-banco .cb-detail-summary { grid-template-columns:minmax(0,1fr); } }
+body.cb-modal-open { overflow:hidden; }
+@media (max-width:1100px) { .cb-top-bar { align-items:stretch; flex-direction:column; }.cb-filter-grid { grid-template-columns:repeat(2,minmax(150px,1fr)); }.cb-kpi-grid { grid-template-columns:repeat(2,1fr); } }
+@media (max-width:760px) {
+    .cb-filter-grid,.cb-kpi-grid,.cb-chart-grid { grid-template-columns:1fr; }.cb-actions button { flex:1; }.cb-chart-fixed { height:300px; }.cb-kpi strong { font-size:1.3rem; }
+    .cb-chart-heading { flex-direction:column; }.cb-chart-controls { width:100%; justify-content:stretch; }.cb-chart-controls select { flex:1; min-width:0; }
+}
+
 [data-theme="dark"] {
     /* --- MODO OSCURO --- */
     --bg-color: #111827;
