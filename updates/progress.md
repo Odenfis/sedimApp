@@ -896,6 +896,23 @@ en la carpeta `public/`.
   `updates/progress.md`.
 - Estado: ✅ implementación y validación local / ⏳ contraste con Azure SQL
 
+**12/09/2026** — Corrección de empresas en Comparativo Banco
+
+- El selector conserva `nombre_visible` como etiqueta y envía `nombre_ventas` como
+  identificador operativo. El backend también acepta ambos nombres para mantener
+  compatibilidad y los convierte al valor usado por `dbo.v_CargosCajaBanco`.
+- El alcance de “Todas” usa exclusivamente nombres operativos autorizados; una empresa
+  ajena a la sesión continúa respondiendo 403. Tablas, detalle y exportaciones muestran
+  las etiquetas visibles Mar Picante y Abruzzo.
+- El estado vacío ahora confirma que la consulta terminó sin movimientos, diferenciándolo
+  del mensaje de error de conexión o procesamiento.
+- Regresiones automatizadas para Cocineria, Mar Picante/Mar Picante 1,
+  Abruzzo/Inversiones Abruzzo Sac, alcance múltiple y rechazo 403. Suite: 13/13.
+- Validación integrada en Azure SQL para 01–12/09/2026: Mar Picante, 599 movimientos,
+  53 razones y S/ 114,030.18; Abruzzo, 445 movimientos, 41 razones y S/ 71,105.93.
+  Consulta y detalle reconciliaron; Excel y PDF generaron archivos válidos.
+- Estado: ✅ implementación y validación integrada
+
 ---
 
 ## 7. Próximos pasos
@@ -906,9 +923,9 @@ en la carpeta `public/`.
 4. Realizar pruebas funcionales por rol, incluidas peticiones alteradas con empresas no asignadas (deben devolver 403).
 5. Ejecutar una descarga autenticada de Excel y PDF de Estadística de Venta contra
    Azure SQL con datos reales y contrastar los totales con la vista web.
-6. Validar Comparativo Banco contra `dbo.v_CargosCajaBanco` en Azure SQL: contrastar
-   un caso `AMBOS`, uno `SOLO_BANCO`, uno `SOLO_EFECTIVO` y comprobar el 403 con una
-   empresa no asignada.
+6. Completar una prueba HTTP autenticada de Comparativo Banco para confirmar el 403
+   desde el endpoint con una empresa no asignada; la resolución y el rechazo ya cuentan
+   con cobertura automatizada, y los datos/exportaciones fueron contrastados en Azure SQL.
 
 _(en blanco)_
 

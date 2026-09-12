@@ -9,6 +9,7 @@ const {
     normalizeReport, createCharts, createExcelBuffer, createPdfBuffer, reportFilename
 } = require('./lib/ventas-estadistica-report');
 const bancoComparativo = require('./lib/cargos-banco-comparativo-report');
+const { resolveComparativoEmpresa, displayComparativoEmpresa } = require('./lib/cargos-banco-comparativo-scope');
 const { isCargoDetalleMes } = require('./lib/cargo-resultado-validation');
 
 const app = express();
@@ -1867,16 +1868,13 @@ function validarFiltrosComparativo(req, filters = {}) {
     if (fin < inicio) { const error = new Error('La fecha fin no puede ser menor que la fecha inicio'); error.status = 400; throw error; }
     const dias = Math.floor((fin - inicio) / 86400000) + 1;
     if (dias > CBC_MAX_DIAS) { const error = new Error(`El rango máximo permitido es de ${CBC_MAX_DIAS} días`); error.status = 400; throw error; }
-    const empresas = req.session.user?.empresas || [];
-    const nombresPermitidos = Array.from(new Set(empresas.flatMap(item => [item.nombre_visible, item.nombre_ventas]).map(value => String(value || '').trim()).filter(Boolean)));
-    const empresa = String(filters.empresa || 'all').trim();
-    if (empresa !== 'all' && !nombresPermitidos.includes(empresa)) { const error = new Error('No tiene acceso a la empresa solicitada'); error.status = 403; throw error; }
+    const alcanceEmpresa = resolveComparativoEmpresa(filters.empresa, req.session.user?.empresas || []);
     const tiposDoc = ['', 'Facturas', 'Boletas', 'Notas de Venta', 'No declaradas'];
     if (!tiposDoc.includes(String(filters.tipoDoc || ''))) { const error = new Error('Tipo de documento no válido'); error.status = 400; throw error; }
     const estados = ['', 'TODOS', 'AMBOS', 'SOLO_BANCO', 'SOLO_EFECTIVO'];
     if (!estados.includes(String(filters.estado || ''))) { const error = new Error('Estado de comparación no válido'); error.status = 400; throw error; }
     const { granularidad, ...cleanFilters } = filters;
-    return { ...cleanFilters, empresa, fInicio, fFin, inicio, fin, nombresPermitidos };
+    return { ...cleanFilters, ...alcanceEmpresa, fInicio, fFin, inicio, fin };
 }
 
 function bindComparativoRequest(request, f) {
@@ -1913,8 +1911,12 @@ async function cargarComparativoBanco(req, filters, includeDetail = false) {
         ${where}
         GROUP BY LTRIM(RTRIM(v.Emp)), LTRIM(RTRIM(v.TipoCargo)), LTRIM(RTRIM(v.Razon)),
                  ${fechaGrupo}, ${CBC_ES_BANCO}`);
-    const report = bancoComparativo.buildComparisonReport(aggregate.recordset, {
-        empresa: f.empresa, fInicio: f.fInicio, fFin: f.fFin,
+    const reportRows = aggregate.recordset.map(row => ({
+        ...row,
+        Emp: displayComparativoEmpresa(row.Emp, f.etiquetasEmpresa)
+    }));
+    const report = bancoComparativo.buildComparisonReport(reportRows, {
+        empresa: f.empresaEtiqueta, fInicio: f.fInicio, fFin: f.fFin,
         tipoDoc: f.tipoDoc || '', tipoCargo: f.tipoCargo || '', estado: f.estado || 'TODOS', razon: f.razon || ''
     }, { generadoPor: req.session.user.nombre || req.session.user.usuario });
     let detail = [];
@@ -1924,8 +1926,12 @@ async function cargarComparativoBanco(req, filters, includeDetail = false) {
                    LTRIM(RTRIM(v.Razon)) AS Razon, v.Fecha, LTRIM(RTRIM(ISNULL(v.Destinatario, ''))) AS Destinatario,
                    LTRIM(RTRIM(ISNULL(v.Empresa, ''))) AS Empresa, LTRIM(RTRIM(v.Emp)) AS Emp, v.Monto
             FROM dbo.v_CargosCajaBanco v ${where} ORDER BY v.Fecha DESC, v.Documento`);
+        const detailRows = details.recordset.map(row => ({
+            ...row,
+            Emp: displayComparativoEmpresa(row.Emp, f.etiquetasEmpresa)
+        }));
         const visible = new Set(report.comparison.map(row => `${row.empresa.toLocaleUpperCase('es-PE')}|${bancoComparativo.normalizeReason(row.razonBase)}`));
-        detail = details.recordset.filter(row => visible.has(`${String(row.Emp).toLocaleUpperCase('es-PE')}|${bancoComparativo.normalizeReason(row.Razon)}`));
+        detail = detailRows.filter(row => visible.has(`${String(row.Emp).toLocaleUpperCase('es-PE')}|${bancoComparativo.normalizeReason(row.Razon)}`));
     }
     return { report, detail, f };
 }

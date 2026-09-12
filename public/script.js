@@ -2781,11 +2781,13 @@ async function cargarEmpresasComparativoBanco() {
         const response = await fetch('/api/empresas-permitidas');
         if (!response.ok) return;
         const empresas = await response.json();
-        const names = [...new Set((empresas || []).map(item => item.nombre_visible || item.nombre_ventas).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
-        names.forEach(name => {
+        const options = (empresas || []).filter(item => item.nombre_ventas)
+            .map(item => ({ value: item.nombre_ventas, label: item.nombre_visible || item.nombre_ventas }))
+            .sort((a, b) => a.label.localeCompare(b.label, 'es'));
+        options.forEach(({ value, label }) => {
             const option = document.createElement('option');
-            option.value = name;
-            option.textContent = name;
+            option.value = value;
+            option.textContent = label;
             select.appendChild(option);
         });
     } catch (error) {
@@ -3030,7 +3032,7 @@ function renderComparativoBancoTable(rows) {
     tfoot.innerHTML = '';
     if (!rows.length) {
         const tr = document.createElement('tr');
-        const td = cbTextCell('No hay información para los filtros seleccionados.', 'empty-state-message');
+        const td = cbTextCell('La consulta se completó correctamente, pero no hay movimientos en el periodo y filtros seleccionados.', 'empty-state-message');
         td.colSpan = 9; tr.appendChild(td); tbody.appendChild(tr); return;
     }
     const grouped = new Map();
