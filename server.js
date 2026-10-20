@@ -11,9 +11,22 @@ const {
 const bancoComparativo = require('./lib/cargos-banco-comparativo-report');
 const { resolveComparativoEmpresa, displayComparativoEmpresa } = require('./lib/cargos-banco-comparativo-scope');
 const { isCargoDetalleMes } = require('./lib/cargo-resultado-validation');
+const {
+    firmarAccessToken, firmarRefreshToken,
+    verificarAccessToken, verificarRefreshToken, AlmacenRefreshTokens
+} = require('./lib/auth-jwt');
+const { parseOffsetCliente, metadatosTimezone, etiquetaUtc } = require('./lib/timezone');
+const { crearLimitador } = require('./lib/rate-limiter');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Render sirve detrás de un proxy inverso: permite a Express leer la IP real
+// del cliente (X-Forwarded-For). Solo afecta a req.ip (rate limiting);
+// la sesión web por cookies no cambia.
+if (process.env.NODE_ENV === 'production' || process.env.RENDER) {
+    app.set('trust proxy', 1);
+}
 
 app.use(express.json());
 app.use(express.static('public'));
@@ -24,8 +37,41 @@ app.use(session({
     cookie: { secure: false, httpOnly: true, maxAge: 1000 * 60 * 60 * 24 }
 }));
 
+// ==========================================
+//  AUTENTICACIÓN HÍBRIDA (SESIÓN WEB + JWT MÓVIL)
+//  - La web sigue usando cookies de sesión (express-session).
+//  - La móvil puede usar header: Authorization: Bearer <accessToken>
+// ==========================================
+const refreshTokens = new AlmacenRefreshTokens({ maxPorUsuario: 5 });
+
+// Límite de velocidad para endpoints de autenticación (anti fuerza bruta)
+const limitarLogin = crearLimitador({ ventanaMs: 15 * 60 * 1000, max: 10 });
+const limitarRefresh = crearLimitador({ ventanaMs: 15 * 60 * 1000, max: 60 });
+
+/**
+ * Extrae el usuario de un header Authorization: Bearer <token> (si existe y es válido).
+ */
+function obtenerUsuarioToken(req) {
+    const header = req.headers['authorization'] || '';
+    if (!header.startsWith('Bearer ')) return null;
+    const payload = verificarAccessToken(header.slice(7).trim());
+    return payload?.user || null;
+}
+
+/**
+ * Usuario de la petición: sesión web primero, luego token Bearer.
+ * Unifica los 38 accesos que antes leían req.session.user directamente.
+ */
+function usuarioActual(req) {
+    if (req.session?.user) return req.session.user;
+    if (req.usuarioToken) return req.usuarioToken;
+    req.usuarioToken = obtenerUsuarioToken(req);
+    return req.usuarioToken;
+}
+
 function isAuthenticated(req, res, next) {
     if (req.session.user) return next();
+    if (req.usuarioToken || obtenerUsuarioToken(req)) return next();
     res.status(401).json({ message: 'No autorizado' });
 }
 
@@ -38,7 +84,7 @@ function esAdministrador(user) {
 }
 
 function tienePermiso(req, permiso) {
-    return Boolean(req.session.user && req.session.user.permisos?.includes(permiso));
+    return Boolean(usuarioActual(req) && usuarioActual(req).permisos?.includes(permiso));
 }
 
 function requierePermiso(permiso) {
@@ -48,8 +94,14 @@ function requierePermiso(permiso) {
     };
 }
 
+// NEW: Mobile Admin Check (usado en endpoints móviles)
+function isMobileAdmin(user) {
+    const rolNormalizado = String(user?.rol || '').trim().toLowerCase('es-PE');
+    return rolNormalizado === 'administrador';
+}
+
 function empresaAutorizada(req, valor, campo) {
-    const empresas = req.session.user?.empresas || [];
+    const empresas = usuarioActual(req)?.empresas || [];
     return empresas.find(empresa => String(empresa[campo]).trim() === String(valor || '').trim()) || null;
 }
 
@@ -72,7 +124,7 @@ app.get('/', (req, res) => res.redirect('/login.html'));
 // ==========================================
 //  LOGIN Y SESIÓN
 // ==========================================
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', limitarLogin, async (req, res) => {
     const { usuario, password } = req.body;
     try {
         const pool = await getConnection();
@@ -102,30 +154,122 @@ app.post('/api/login', async (req, res) => {
             return res.status(403).json({ message: 'Usuario sin empresas activas asignadas' });
         }
 
-        req.session.user = {
+        const sesionUsuario = {
             id: user.id, usuario: user.usuario, nombre: user.nombre,
             rol, permisos: permisosResult.recordset.map(row => row.clave), empresas: empresasResult.recordset
         };
-        req.session.save(() => res.json({ message: 'Login exitoso', user: req.session.user }));
+        req.session.user = sesionUsuario;
+
+        // JWT para la app móvil (la web ignora estos campos)
+        const accessToken = firmarAccessToken(sesionUsuario);
+        const refresh = firmarRefreshToken(sesionUsuario);
+        refreshTokens.registrar(user.id, refresh.jti, refresh.expiraEn);
+
+        req.session.save(() => res.json({
+            message: 'Login exitoso',
+            user: sesionUsuario,
+            accessToken,
+            refreshToken: refresh.token,
+            tokenType: 'Bearer',
+            expiresIn: 24 * 60 * 60
+        }));
     } catch (error) { res.status(500).send(error.message); }
 });
 
-app.post('/api/logout', (req, res) => { req.session.destroy(); res.json({ message: 'Sesión cerrada' }); });
-app.get('/api/session', (req, res) => { req.session.user ? res.json({ user: req.session.user }) : res.status(401).send(); });
+// ==========================================
+//  REFRESH TOKEN (MÓVIL)
+//  Intercambia un refreshToken válido por un nuevo accessToken.
+// ==========================================
+app.post('/api/token/refresh', limitarRefresh, async (req, res) => {
+    const { refreshToken } = req.body || {};
+    if (!refreshToken) return res.status(400).json({ message: 'refreshToken requerido' });
+
+    const payload = verificarRefreshToken(refreshToken);
+    if (!payload) return res.status(401).json({ message: 'Refresh token inválido o expirado' });
+
+    // El jti debe estar registrado (no revocado) y vigente
+    if (!refreshTokens.validar(payload.sub, payload.jti)) {
+        return res.status(401).json({ message: 'Refresh token revocado' });
+    }
+
+    // Reconsultar datos vigentes del usuario (permisos/empresas actualizados)
+    try {
+        const pool = await getConnection();
+        const result = await pool.request().input('id', sql.Int, payload.sub)
+            .query('SELECT u.*, r.nombre as rol_nombre FROM usuariosweb u LEFT JOIN Roles r ON u.rol_id = r.id WHERE u.id = @id');
+        if (result.recordset.length === 0) return res.status(401).json({ message: 'Usuario no encontrado' });
+
+        const user = result.recordset[0];
+        const permisosResult = await pool.request().input('rol_id', sql.Int, user.rol_id)
+            .query('SELECT m.clave FROM Roles_Permisos rp JOIN Modulos m ON rp.modulo_id = m.id WHERE rp.rol_id = @rol_id');
+        const empresasResult = await pool.request().input('usuario_id', sql.Int, user.id)
+            .input('es_admin', sql.Bit, normalizarRol(user.rol_nombre) === 'administrador')
+            .query(`SELECT ea.id, ea.tabla200_numero, ea.codigo_producto, ea.nombre_ventas, ea.nombre_visible
+                    FROM dbo.Empresas_Acceso ea
+                    WHERE ea.activo = 1 AND (@es_admin = 1 OR EXISTS (
+                        SELECT 1 FROM dbo.Usuarios_Empresas ue
+                        WHERE ue.usuario_id = @usuario_id AND ue.empresa_id = ea.id AND ue.activo = 1
+                    ))
+                    ORDER BY ea.tabla200_numero`);
+
+        const sesionUsuario = {
+            id: user.id, usuario: user.usuario, nombre: user.nombre,
+            rol: user.rol_nombre,
+            permisos: permisosResult.recordset.map(row => row.clave),
+            empresas: empresasResult.recordset
+        };
+        const accessToken = firmarAccessToken(sesionUsuario);
+        res.json({ accessToken, tokenType: 'Bearer', expiresIn: 24 * 60 * 60, user: sesionUsuario });
+    } catch (error) {
+        console.error('Error en /api/token/refresh:', error);
+        res.status(500).json({ message: 'Error refrescando token' });
+    }
+});
+
+app.post('/api/logout', (req, res) => {
+    // Revocar refresh tokens del usuario (sesión web o token móvil)
+    const user = usuarioActual(req);
+    if (user?.id) refreshTokens.revocar(user.id);
+    req.session.destroy();
+    res.json({ message: 'Sesión cerrada' });
+});
+app.get('/api/session', (req, res) => { usuarioActual(req) ? res.json({ user: usuarioActual(req) }) : res.status(401).send(); });
 app.get('/api/roles', isAuthenticated, (req, res, next) => {
-    if (!esAdministrador(req.session.user)) return res.status(403).json({ message: 'Solo Administrador' });
+    if (!esAdministrador(usuarioActual(req))) return res.status(403).json({ message: 'Solo Administrador' });
     next();
 }, async (req, res) => {
     try { const pool = await getConnection(); const result = await pool.request().query("SELECT id, nombre FROM Roles WHERE LOWER(LTRIM(RTRIM(nombre))) IN ('administrador', 'operador', 'supervisor') ORDER BY nombre"); res.json(result.recordset); } catch (e) { res.status(500).send(e.message); }
 });
 
-app.get('/api/empresas-permitidas', isAuthenticated, (req, res) => res.json(req.session.user.empresas || []));
+app.get('/api/empresas-permitidas', isAuthenticated, (req, res) => res.json(usuarioActual(req).empresas || []));
+
+// ==========================================
+//  ZONA HORARIA DEL CLIENTE
+//  El cliente envía su offset en minutos (convención JS getTimezoneOffset):
+//  header X-Timezone-Offset: 300  => UTC-5 (Perú)
+//  Sin header => responde con el offset del servidor.
+// ==========================================
+app.get('/api/timezone/client', isAuthenticated, (req, res) => {
+    const offsetCliente = parseOffsetCliente(req.headers['x-timezone-offset']);
+    if (offsetCliente === null) {
+        return res.status(400).json({
+            message: 'Header X-Timezone-Offset requerido (minutos, ej: 300 para UTC-5)'
+        });
+    }
+    const meta = metadatosTimezone(offsetCliente);
+    res.json({
+        zoneOffset: offsetCliente,
+        ...meta,
+        serverTimezoneLabel: etiquetaUtc(meta.serverOffset),
+        clientTimezoneLabel: etiquetaUtc(meta.clientOffset)
+    });
+});
 
 // ==========================================
 //  USUARIOS
 // ==========================================
 app.get('/api/users', isAuthenticated, async (req, res) => {
-    if (!esAdministrador(req.session.user)) return res.status(403).json({ message: 'Solo Administrador' });
+    if (!esAdministrador(usuarioActual(req))) return res.status(403).json({ message: 'Solo Administrador' });
     const pool = await getConnection();
     const result = await pool.request().query(`SELECT u.id, u.usuario, u.nombre, r.nombre as rol,
         ISNULL(STRING_AGG(CASE WHEN ue.activo = 1 THEN ea.nombre_visible END, ', '), '') AS empresas,
@@ -140,7 +284,7 @@ app.get('/api/users', isAuthenticated, async (req, res) => {
     res.json(result.recordset);
 });
 app.patch('/api/users/:id/estado', isAuthenticated, async (req, res) => {
-    if (!esAdministrador(req.session.user)) return res.status(403).json({ message: 'Solo Administrador' });
+    if (!esAdministrador(usuarioActual(req))) return res.status(403).json({ message: 'Solo Administrador' });
     const usuarioId = Number(req.params.id);
     const activo = Boolean(req.body.activo);
     if (!Number.isInteger(usuarioId)) return res.status(400).json({ message: 'Usuario no válido' });
@@ -157,7 +301,7 @@ app.patch('/api/users/:id/estado', isAuthenticated, async (req, res) => {
     } catch (error) { res.status(500).json({ message: 'Error actualizando estado' }); }
 });
 app.post('/api/users', isAuthenticated, async (req, res) => {
-    if (!esAdministrador(req.session.user)) return res.status(403).json({ message: 'Solo Administrador' });
+    if (!esAdministrador(usuarioActual(req))) return res.status(403).json({ message: 'Solo Administrador' });
     const { usuario, password, nombre, rol_id, empresa_ids = [] } = req.body;
     const hashedPassword = await bcrypt.hash(password, 10);
     try {
@@ -177,7 +321,7 @@ app.post('/api/users', isAuthenticated, async (req, res) => {
                 const assign = new sql.Request(transaction);
                 const valid = await assign.input('empresa_id', sql.Int, empresaId).query('SELECT id FROM Empresas_Acceso WHERE id = @empresa_id AND activo = 1');
                 if (!valid.recordset.length) throw new Error('Empresa no válida');
-                await new sql.Request(transaction).input('usuario_id', sql.Int, created.recordset[0].id).input('empresa_id', sql.Int, empresaId).input('asignado_por', sql.NVarChar, req.session.user.usuario)
+                await new sql.Request(transaction).input('usuario_id', sql.Int, created.recordset[0].id).input('empresa_id', sql.Int, empresaId).input('asignado_por', sql.NVarChar, usuarioActual(req).usuario)
                     .query('INSERT INTO Usuarios_Empresas(usuario_id, empresa_id, asignado_por) VALUES (@usuario_id, @empresa_id, @asignado_por)');
             }
             await transaction.commit();
@@ -186,7 +330,7 @@ app.post('/api/users', isAuthenticated, async (req, res) => {
     } catch (err) { res.status(500).json({ message: 'Error' }); }
 });
 app.patch('/api/users/:id', isAuthenticated, async (req, res) => {
-    if (!esAdministrador(req.session.user)) return res.status(403).json({ message: 'Solo Administrador' });
+    if (!esAdministrador(usuarioActual(req))) return res.status(403).json({ message: 'Solo Administrador' });
     const { nombre, rol_id, empresa_ids = [], activo = true } = req.body;
     const usuarioId = Number(req.params.id);
     if (!Number.isInteger(usuarioId)) return res.status(400).json({ message: 'Usuario no válido' });
@@ -206,7 +350,7 @@ app.patch('/api/users/:id', isAuthenticated, async (req, res) => {
             await new sql.Request(transaction).input('id', sql.Int, usuarioId).input('nombre', sql.NVarChar, nombre).input('rol_id', sql.Int, rol_id)
                 .query('UPDATE usuariosweb SET nombre = @nombre, rol_id = @rol_id WHERE id = @id');
             await new sql.Request(transaction).input('id', sql.Int, usuarioId).query('DELETE FROM Usuarios_Empresas WHERE usuario_id = @id');
-            for (const empresaId of ids) await new sql.Request(transaction).input('usuario_id', sql.Int, usuarioId).input('empresa_id', sql.Int, empresaId).input('activo', sql.Bit, Boolean(activo)).input('asignado_por', sql.NVarChar, req.session.user.usuario)
+            for (const empresaId of ids) await new sql.Request(transaction).input('usuario_id', sql.Int, usuarioId).input('empresa_id', sql.Int, empresaId).input('activo', sql.Bit, Boolean(activo)).input('asignado_por', sql.NVarChar, usuarioActual(req).usuario)
                 .query('INSERT INTO Usuarios_Empresas(usuario_id, empresa_id, activo, asignado_por) VALUES (@usuario_id, @empresa_id, @activo, @asignado_por)');
             await transaction.commit();
         } catch (error) { await transaction.rollback(); throw error; }
@@ -214,8 +358,8 @@ app.patch('/api/users/:id', isAuthenticated, async (req, res) => {
     } catch (error) { res.status(500).json({ message: error.message || 'Error actualizando usuario' }); }
 });
 app.delete('/api/users/:id', isAuthenticated, async (req, res) => {
-    if (!esAdministrador(req.session.user)) return res.status(403).json({ message: 'Solo Administrador' });
-    if (Number(req.params.id) === req.session.user.id) return res.status(400).json({ message: 'No puede eliminar su propio usuario' });
+    if (!esAdministrador(usuarioActual(req))) return res.status(403).json({ message: 'Solo Administrador' });
+    if (Number(req.params.id) === usuarioActual(req).id) return res.status(400).json({ message: 'No puede eliminar su propio usuario' });
     const pool = await getConnection();
     const target = await pool.request().input('id', sql.Int, req.params.id)
         .query('SELECT r.nombre AS rol FROM usuariosweb u JOIN Roles r ON r.id = u.rol_id WHERE u.id = @id');
@@ -322,6 +466,19 @@ app.get('/api/precios/:empresa', isAuthenticated, requierePermiso('herramientas'
         `;
 
         const result = await pool.request().input('prefix', sql.VarChar, empresa).query(query);
+
+        // Timezone adaptativo: si el cliente envía X-Timezone-Offset se responde
+        // un objeto enriquecido { productos, serverOffset, clientOffset, diff, ... }.
+        // Sin header se mantiene el array plano original (compatibilidad con la web).
+        const offsetCliente = parseOffsetCliente(req.headers['x-timezone-offset']);
+        if (offsetCliente !== null) {
+            return res.json({
+                productos: result.recordset,
+                ...metadatosTimezone(offsetCliente),
+                serverTimezoneLabel: etiquetaUtc(metadatosTimezone(offsetCliente).serverOffset),
+                clientTimezoneLabel: etiquetaUtc(offsetCliente)
+            });
+        }
         res.json(result.recordset);
     } catch (e) {
         console.error(e);
@@ -410,6 +567,207 @@ app.put('/api/precios/:codpro', isAuthenticated, async (req, res) => {
     } catch (e) { res.status(500).json({ message: 'Error' }); }
 });*/
 
+// ═════════════════════════════════════════════════════════════════
+//  MÓDULO: ENDPOINTS EXCLUSIVOS PARA MÓVIL
+//  ESTOS ENDPOINTS NO ACOMPANAN con la web existente (/api/*)
+// ═════════════════════════════════════════════════════════════════
+
+// --- 1. Timezone Client Handler ---
+app.get('/api/mobile/timezone/client', isAuthenticated, (req, res) => {
+    try {
+        const offsetCliente = parseOffsetCliente(req.headers['x-timezone-offset']);
+        if (offsetCliente === null) {
+            return res.status(400).json({
+                message: 'Header X-Timezone-Offset requerido (minutos, ej: 300 para UTC-5)'
+            });
+        }
+        const meta = metadatosTimezone(offsetCliente);
+        res.json({
+            serverTimezone: meta.serverOffset,
+            clientTimezone: meta.clientOffset,
+            diff: meta.diff,
+            serverTime: meta.serverTime,
+            clientTime: meta.clientTime,
+            message: 'TIMEZONE SUCCESS'
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'TIMEZONE ERROR' });
+    }
+});
+
+// --- 2. Mobile Prices Handler (tiene timezone adaptive) ---
+app.get('/api/mobile/prices/:empresa', isAuthenticated, async (req, res) => {
+    const { empresa } = req.params;
+
+    // Validar empresa
+    if (!['02', '04', '06'].includes(empresa)) {
+        return res.status(400).json({ message: 'Empresa no válida' });
+    }
+
+    // Seguridad: el usuario solo consulta empresas a las que tiene acceso
+    if (!exigirEmpresa(req, res, empresa, 'codigo_producto')) return;
+
+    // Offset del cliente en minutos (convención JS): null si no envió header
+    const clientOffset = parseOffsetCliente(req.headers['x-timezone-offset']);
+    const meta = metadatosTimezone(clientOffset);
+
+    try {
+        const pool = await getConnection();
+
+        // Factor IGVV REAL desde la tabla Valores (antes estaba hardcodeado 10.5)
+        const valResult = await pool.request().query("SELECT TOP 1 n_valor FROM Valores WHERE c_valor = 'Igvv'");
+        const igvvPct = valResult.recordset.length > 0 ? Number(valResult.recordset[0].n_valor) || 10.00 : 10.00;
+        const factor = 1 + (igvvPct / 100);
+
+        // Query con timezone adaptive (offset saneado por parseOffsetCliente)
+        const query = `
+            DECLARE @factor DECIMAL(10, 4) = ${factor};
+            DECLARE @timezoneDiff INT = ${meta.diff};
+
+            SELECT
+                p.CodPro,
+                p.Nombre,
+                ROUND((
+                    CASE
+                        WHEN p.Afecto = 1 THEN @factor
+                        ELSE 1
+                    END
+                ) * ISNULL(pr.PreTema1, 0), 4) as PreTema1,
+                ROUND((
+                    CASE
+                        WHEN p.Afecto = 1 THEN @factor
+                        ELSE 1
+                    END
+                ) * ISNULL(pr.PreTema2, 0), 4) as PreTema2,
+                ROUND((
+                    CASE
+                        WHEN p.Afecto = 1 THEN @factor
+                        ELSE 1
+                    END
+                ) * ISNULL(pr.PreTema3, 0), 4) as PreTema3,
+                ROUND((
+                    CASE
+                        WHEN p.Afecto = 1 THEN @factor
+                        ELSE 1
+                    END
+                ) * ISNULL(pr.PreTema4, 0), 4) as PreTema4,
+                ROUND((
+                    CASE
+                        WHEN p.Afecto = 1 THEN @factor
+                        ELSE 1
+                    END
+                ) * ISNULL(pr.PreTema5, 0), 4) as PreTema5,
+                ROUND((
+                    CASE
+                        WHEN p.Afecto = 1 THEN @factor
+                        ELSE 1
+                    END
+                ) * ISNULL(pr.PreTema6, 0), 4) as PreTema6
+            FROM Productos p
+            LEFT JOIN Precios pr ON p.CodPro = pr.Codpro
+            WHERE p.Tipo = 3
+              AND p.CodPro LIKE @prefix + '%'
+              AND p.Eliminado = 0
+            ORDER BY p.Nombre ASC
+        `;
+
+        const result = await pool.request()
+            .input('prefix', sql.VarChar, empresa)
+            .query(query);
+
+        // Respuesta con timezone data
+        res.json({
+            serverTimezone: meta.serverOffset,
+            clientTimezone: meta.clientOffset,
+            diff: meta.diff,
+            serverTime: meta.serverTime,
+            clientTime: meta.clientTime,
+            productos: result.recordset,
+            message: 'TIMEZONE PRICING RETRIEVED'
+        });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ message: 'TIMEZONE ERROR' });
+    }
+});
+
+// --- 3. Mobile Keys Handler (Admin Only - Security Improved) ---
+app.get('/api/mobile/keys', isAuthenticated, async (req, res) => {
+    // Security: Solo Administradores tienen acceso
+    if (!isMobileAdmin(usuarioActual(req))) {
+        return res.status(403).json({
+            message: 'SOLO ADMINISTRADOR PUEDE ACCEDER'
+        });
+    }
+
+    try {
+        const pool = await getConnection();
+        const result = await pool.request()
+            .query("SELECT n_numero, c_describe, conversion FROM Tablas WHERE n_codtabla = 603 ORDER BY n_numero");
+
+        res.json({
+            keys: result.recordset,
+            message: 'ADMIN KEYS RETRIEVED'
+        });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ message: 'ADMIN KEYS ERROR' });
+    }
+});
+
+// --- 4. Mobile Keys Update Handler (Admin Only - With Validation) ---
+app.put('/api/mobile/keys/:id', isAuthenticated, async (req, res) => {
+    const { id } = req.params;
+    const { valor } = req.body; // Valor como string
+
+    // Security check
+    if (!isMobileAdmin(usuarioActual(req))) {
+        return res.status(403).json({
+            message: 'SOLO ADMINISTRADOR PUEDE ACCEDER'
+        });
+    }
+
+    // Data validation
+    const idNum = Number(id);
+    if (!Number.isInteger(idNum) || idNum <= 0) {
+        return res.status(400).json({
+            message: 'ID de clave válida requerido'
+        });
+    }
+
+    try {
+        const pool = await getConnection();
+
+        // Convertir valor a float
+        const valorFloat = parseFloat(valor);
+        if (isNaN(valorFloat)) {
+            return res.status(400).json({
+                message: 'Valor numérico inválido'
+            });
+        }
+
+        const result = await pool.request()
+            .input('id', sql.Int, id)
+            .input('val', sql.Float, valorFloat)
+            .query("UPDATE Tablas SET conversion = @val WHERE n_codtabla = 603 AND n_numero = @id");
+
+        if (result.rowsAffected[0] === 0) {
+            return res.status(404).json({
+                message: 'No se encontró la clave solicitada'
+            });
+        }
+
+        res.json({
+            message: 'CLAVE ACTUALIZADA EXITOSAMENTE',
+            clave: id,
+            nuevoValor: valorFloat
+        });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ message: 'ERROR AL ACTUALIZAR CLAVE' });
+    }
+});
+
 // ==============================================================
 //  REVISIÓN DE DATOS EN LA NUBE (CÓDIGO DE RENDER RESTAURADO)
 // ==============================================================
@@ -464,7 +822,7 @@ const ACTUALIZACION_DEFAULTS = {
 };
 
 function requiereConfigActualizaciones(req, res, next) {
-    if (!req.session.user.permisos.includes('config_actualizaciones')) return res.status(403).json({ message: 'Sin permisos' });
+    if (!usuarioActual(req).permisos.includes('config_actualizaciones')) return res.status(403).json({ message: 'Sin permisos' });
     next();
 }
 
@@ -512,7 +870,7 @@ app.post('/api/admin/config-actualizaciones', isAuthenticated, requiereConfigAct
                 .input('zip_name', sql.VarChar, ACTUALIZACION_DEFAULTS.zip_name)
                 .input('sha256', sql.VarChar, hash)
                 .input('nota', sql.VarChar, nota && String(nota).trim() !== '' ? String(nota).trim().substring(0, 300) : null)
-                .input('creado_por', sql.VarChar, req.session.user.usuario)
+                .input('creado_por', sql.VarChar, usuarioActual(req).usuario)
                 .query(`INSERT INTO Actualizaciones_ERP (drive_id, drive_url, zip_name, sha256, nota, activo, creado_por)
                         VALUES (@drive_id, @drive_url, @zip_name, @sha256, @nota, 1, @creado_por)`);
             await transaccion.commit();
@@ -532,7 +890,7 @@ app.post('/api/admin/config-actualizaciones', isAuthenticated, requiereConfigAct
 //  Genera el .bat dinámicamente con la config activa de BD
 // ==========================================
 app.get('/api/herramientas/actualizar-erp', isAuthenticated, async (req, res) => {
-    if (!req.session.user.permisos.includes('herramientas')) return res.status(403).json({ message: 'Sin permisos' });
+    if (!usuarioActual(req).permisos.includes('herramientas')) return res.status(403).json({ message: 'Sin permisos' });
     try {
         const cfg = { ...ACTUALIZACION_DEFAULTS };
         try {
@@ -602,7 +960,7 @@ app.post('/api/validate-password', isAuthenticated, async (req, res) => {
 const checkOperaciones = (req, res, next) => {
     // Permitir si tiene permiso 'operaciones' O 'equipos' (por si acaso) o es admin
     // En tu lógica actual:
-    if (req.session.user && req.session.user.permisos.includes('operaciones')) {
+    if (usuarioActual(req) && usuarioActual(req).permisos.includes('operaciones')) {
         next();
     } else {
         res.status(403).send('Sin permisos de Operaciones');
@@ -889,9 +1247,8 @@ app.post('/api/reports/salida-insumos/export', isAuthenticated, async (req, res)
 
 // 1. Obtener las claves (Solo tabla 603)
 app.get('/api/admin/claves', isAuthenticated, async (req, res) => {
-    // Verificación de ROL (Opcional pero recomendado en backend)
-    // Asumimos que el rol se llama 'Administrador' o 'Sistemas'
-    // if (req.session.user.rol !== 'Administrador') return res.status(403).send('Acceso denegado');
+    // Seguridad: solo Administrador puede ver claves del sistema
+    if (!esAdministrador(usuarioActual(req))) return res.status(403).json({ message: 'Acceso no autorizado' });
 
     try {
         const pool = await getConnection();
@@ -907,6 +1264,9 @@ app.get('/api/admin/claves', isAuthenticated, async (req, res) => {
 
 // 2. Actualizar una clave específica
 app.put('/api/admin/claves/:id', isAuthenticated, async (req, res) => {
+    // Seguridad: solo Administrador puede modificar claves del sistema
+    if (!esAdministrador(usuarioActual(req))) return res.status(403).json({ message: 'Acceso no autorizado' });
+
     const { id } = req.params; // Esto será el n_numero
     const { valor } = req.body; // Nuevo valor de 'conversion'
 
@@ -927,7 +1287,7 @@ app.put('/api/admin/claves/:id', isAuthenticated, async (req, res) => {
 
 // Endpoint para llenar el combo de Empresas (Cajeros)
 app.get('/api/reports/listas/empresas', isAuthenticated, async (req, res) => {
-    res.json((req.session.user.empresas || []).map(empresa => ({ n_numero: empresa.tabla200_numero, c_describe: empresa.nombre_visible })));
+    res.json((usuarioActual(req).empresas || []).map(empresa => ({ n_numero: empresa.tabla200_numero, c_describe: empresa.nombre_visible })));
 });
 
 
@@ -957,7 +1317,7 @@ function buildSaldoProveedoresQuery(filters) {
 }
 
 app.post('/api/reports/saldo-proveedores', isAuthenticated, async (req, res) => {
-    if (!esAdministrador(req.session.user)) return res.status(403).json({ message: 'Reporte disponible solo para Administrador' });
+    if (!esAdministrador(usuarioActual(req))) return res.status(403).json({ message: 'Reporte disponible solo para Administrador' });
     const { filters, page, pageSize } = req.body;
     const offset = (page - 1) * pageSize;
 
@@ -1007,7 +1367,7 @@ app.post('/api/reports/saldo-proveedores', isAuthenticated, async (req, res) => 
 });
 
 app.post('/api/reports/saldo-proveedores/export', isAuthenticated, async (req, res) => {
-    if (!esAdministrador(req.session.user)) return res.status(403).json({ message: 'Reporte disponible solo para Administrador' });
+    if (!esAdministrador(usuarioActual(req))) return res.status(403).json({ message: 'Reporte disponible solo para Administrador' });
     const { filters } = req.body;
     try {
         const pool = await getConnection();
@@ -1211,7 +1571,7 @@ app.post('/api/reports/cargos-caja/export', isAuthenticated, async (req, res) =>
 
 // Middleware de seguridad para recetas
 const checkRecetas = (req, res, next) => {
-    if (req.session.user && (req.session.user.permisos.includes('recetas') || req.session.user.permisos.includes('operaciones'))) {
+    if (usuarioActual(req) && (usuarioActual(req).permisos.includes('recetas') || usuarioActual(req).permisos.includes('operaciones'))) {
         next();
     } else {
         res.status(403).send('Sin permisos de Recetas');
@@ -1356,7 +1716,7 @@ app.post('/api/recetas', isAuthenticated, checkRecetas, async (req, res) => {
 // ==========================================
 app.get('/api/auditoria/tickets-no-pagados/:anio', isAuthenticated, async (req, res) => {
     // Verificación de permiso
-    if (!req.session.user.permisos.includes('auditoria')) {
+    if (!usuarioActual(req).permisos.includes('auditoria')) {
         return res.status(403).json({ message: 'Sin permisos de Auditoría' });
     }
 
@@ -1376,7 +1736,7 @@ app.get('/api/auditoria/tickets-no-pagados/:anio', isAuthenticated, async (req, 
 
 // 1. Consulta de Documentos Sin Detalle
 app.get('/api/auditoria/doc-sin-detalle', isAuthenticated, async (req, res) => {
-    if (!req.session.user.permisos.includes('auditoria')) return res.status(403).json({ message: 'Sin permisos' });
+    if (!usuarioActual(req).permisos.includes('auditoria')) return res.status(403).json({ message: 'Sin permisos' });
 
     const { emp, tur, anio } = req.query;
     try {
@@ -1397,7 +1757,7 @@ app.get('/api/auditoria/doc-sin-detalle', isAuthenticated, async (req, res) => {
 
 // 2. Ejecución de Corrección de Carga
 app.post('/api/auditoria/corregir-carga', isAuthenticated, async (req, res) => {
-    if (!req.session.user.permisos.includes('auditoria')) return res.status(403).json({ message: 'Sin permisos' });
+    if (!usuarioActual(req).permisos.includes('auditoria')) return res.status(403).json({ message: 'Sin permisos' });
 
     const { emp, tur, anio } = req.body;
     try {
@@ -1417,7 +1777,7 @@ app.post('/api/auditoria/corregir-carga', isAuthenticated, async (req, res) => {
 
 // 3. Auditoría de Subida a la Nube (sp_aud_NumFactura)
 app.get('/api/auditoria/subida-nube', isAuthenticated, async (req, res) => {
-    if (!req.session.user.permisos.includes('auditoria')) return res.status(403).json({ message: 'Sin permisos' });
+    if (!usuarioActual(req).permisos.includes('auditoria')) return res.status(403).json({ message: 'Sin permisos' });
 
     const { emp, tur } = req.query;
     try {
@@ -1469,7 +1829,7 @@ app.get('/api/auditoria/subida-nube', isAuthenticated, async (req, res) => {
 app.get('/api/operaciones/turnos', isAuthenticated, requierePermiso('operaciones'), async (req, res) => {
     try {
         const pool = await getConnection();
-        const empresas = req.session.user.empresas || [];
+        const empresas = usuarioActual(req).empresas || [];
         if (empresas.length === 0) return res.json([]);
 
         const request = pool.request();
@@ -1582,7 +1942,7 @@ app.post('/api/cargos/dashboard', isAuthenticated, async (req, res) => {
     if (f.sede && f.sede !== 'all' && !exigirEmpresa(req, res, f.sede, 'tabla200_numero')) return;
     try {
         const pool = await getConnection();
-        const where = buildCargoResultadoWhere(f, req.session.user.empresas);
+        const where = buildCargoResultadoWhere(f, usuarioActual(req).empresas);
 
         // KPIs y total general
         const kpis = await bindCargoResultadoParams(pool.request(), f)
@@ -1638,7 +1998,7 @@ app.post('/api/cargos/detalle', isAuthenticated, async (req, res) => {
     if (f.sede && f.sede !== 'all' && !exigirEmpresa(req, res, f.sede, 'tabla200_numero')) return;
     try {
         const pool = await getConnection();
-        let where = buildCargoResultadoWhere(f, req.session.user.empresas) + ` AND t2.c_describe = @tipoCargo`;
+        let where = buildCargoResultadoWhere(f, usuarioActual(req).empresas) + ` AND t2.c_describe = @tipoCargo`;
         if (parseInt(mes) > 0) where += ` AND MONTH(c.Fecha) = @mes`;
 
 const razonesQuery = bindCargoResultadoParams(pool.request(), f)
@@ -1667,7 +2027,7 @@ app.post('/api/cargos/export', isAuthenticated, async (req, res) => {
     if (f.sede && f.sede !== 'all' && !exigirEmpresa(req, res, f.sede, 'tabla200_numero')) return;
     try {
         const pool = await getConnection();
-        const where = buildCargoResultadoWhere(f, req.session.user.empresas);
+        const where = buildCargoResultadoWhere(f, usuarioActual(req).empresas);
 
         const matrix = await bindCargoResultadoParams(pool.request(), f)
             .query(`SELECT t2.c_describe AS tipoCargo, MONTH(c.Fecha) AS mes, SUM(c.Monto) AS monto ${CARGO_BASE_JOINS} ${where} GROUP BY t2.c_describe, MONTH(c.Fecha) ORDER BY t2.c_describe`);
@@ -1832,7 +2192,7 @@ async function exportarEstadisticaVentas(req, res, formato) {
         const report = normalizeReport({
             empresa, turno, fechaInicio: fInicio, fechaFin: fFin,
             tiposCobro: result.data, diario: result.diario,
-            generadoPor: req.session.user.nombre || req.session.user.usuario
+            generadoPor: usuarioActual(req).nombre || usuarioActual(req).usuario
         });
         const charts = await createCharts(report);
         const isExcel = formato === 'excel';
@@ -1868,7 +2228,7 @@ function validarFiltrosComparativo(req, filters = {}) {
     if (fin < inicio) { const error = new Error('La fecha fin no puede ser menor que la fecha inicio'); error.status = 400; throw error; }
     const dias = Math.floor((fin - inicio) / 86400000) + 1;
     if (dias > CBC_MAX_DIAS) { const error = new Error(`El rango máximo permitido es de ${CBC_MAX_DIAS} días`); error.status = 400; throw error; }
-    const alcanceEmpresa = resolveComparativoEmpresa(filters.empresa, req.session.user?.empresas || []);
+    const alcanceEmpresa = resolveComparativoEmpresa(filters.empresa, usuarioActual(req)?.empresas || []);
     const tiposDoc = ['', 'Facturas', 'Boletas', 'Notas de Venta', 'No declaradas'];
     if (!tiposDoc.includes(String(filters.tipoDoc || ''))) { const error = new Error('Tipo de documento no válido'); error.status = 400; throw error; }
     const estados = ['', 'TODOS', 'AMBOS', 'SOLO_BANCO', 'SOLO_EFECTIVO'];
@@ -1918,7 +2278,7 @@ async function cargarComparativoBanco(req, filters, includeDetail = false) {
     const report = bancoComparativo.buildComparisonReport(reportRows, {
         empresa: f.empresaEtiqueta, fInicio: f.fInicio, fFin: f.fFin,
         tipoDoc: f.tipoDoc || '', tipoCargo: f.tipoCargo || '', estado: f.estado || 'TODOS', razon: f.razon || ''
-    }, { generadoPor: req.session.user.nombre || req.session.user.usuario });
+    }, { generadoPor: usuarioActual(req).nombre || usuarioActual(req).usuario });
     let detail = [];
     if (includeDetail) {
         const details = await bindComparativoRequest(pool.request(), f).query(`
