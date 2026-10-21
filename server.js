@@ -768,6 +768,173 @@ app.put('/api/mobile/keys/:id', isAuthenticated, async (req, res) => {
     }
 });
 
+// ==========================================
+//  MÓDULO: GESTIÓN DE TABLAS (CRUD completo)
+//  Requiere permiso 'herramientas'
+//  Tabla: dbo.Tablas (PK compuesta: n_codtabla + n_numero)
+// ==========================================
+
+// GET /api/mobile/tablas - Listado con paginación y búsqueda por texto
+// en c_descripcion y c_describe
+app.get('/api/mobile/tablas', isAuthenticated, requierePermiso('herramientas'), async (req, res) => {
+    const { page = 1, pageSize = 50, q } = req.query;
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const size = Math.max(1, Math.min(parseInt(pageSize) || 50, 200));
+    const offset = (pageNum - 1) * size;
+
+    try {
+        const pool = await getConnection();
+        const request = pool.request();
+
+        let query = `
+            SELECT n_codtabla, c_descripcion, n_numero, c_describe, conversion, Afecto
+            FROM Tablas
+            WHERE 1=1
+        `;
+
+        if (q && q.trim() !== '') {
+            query += " AND (c_descripcion LIKE @q OR c_describe LIKE @q)";
+            request.input('q', sql.VarChar, `%${q.trim()}%`);
+        }
+
+        query += " ORDER BY n_codtabla, n_numero OFFSET @offset ROWS FETCH NEXT @size ROWS ONLY";
+        request.input('offset', sql.Int, offset);
+        request.input('size', sql.Int, size);
+
+        const result = await request.query(query);
+        res.json({
+            data: result.recordset,
+            page: pageNum,
+            pageSize: size
+        });
+    } catch (e) {
+        console.error('Error listando tablas:', e);
+        res.status(500).json({ message: 'Error al listar tablas' });
+    }
+});
+
+// GET /api/mobile/tablas/:n_codtabla/:n_numero - Obtener por PK compuesta
+app.get('/api/mobile/tablas/:n_codtabla/:n_numero', isAuthenticated, requierePermiso('herramientas'), async (req, res) => {
+    const nCodtabla = Number(req.params.n_codtabla);
+    const nNumero = Number(req.params.n_numero);
+
+    if (!Number.isInteger(nCodtabla) || !Number.isInteger(nNumero)) {
+        return res.status(400).json({ message: 'Claves no válidas' });
+    }
+
+    try {
+        const pool = await getConnection();
+        const result = await pool.request()
+            .input('n_codtabla', sql.Int, nCodtabla)
+            .input('n_numero', sql.Int, nNumero)
+            .query("SELECT n_codtabla, c_descripcion, n_numero, c_describe, conversion, Afecto FROM Tablas WHERE n_codtabla = @n_codtabla AND n_numero = @n_numero");
+
+        if (result.recordset.length === 0) {
+            return res.status(404).json({ message: 'Registro no encontrado' });
+        }
+        res.json(result.recordset[0]);
+    } catch (e) {
+        console.error('Error obteniendo tabla:', e);
+        res.status(500).json({ message: 'Error al obtener registro' });
+    }
+});
+
+// POST /api/mobile/tablas - Crear registro
+app.post('/api/mobile/tablas', isAuthenticated, requierePermiso('herramientas'), async (req, res) => {
+    const { n_codtabla, c_descripcion, n_numero, c_describe, conversion, Afecto } = req.body;
+
+    if (n_codtabla == null || !c_descripcion || n_numero == null || !c_describe || Afecto == null) {
+        return res.status(400).json({ message: 'Campos requeridos faltantes' });
+    }
+
+    try {
+        const pool = await getConnection();
+
+        // Verificar duplicado de PK compuesta
+        const check = await pool.request()
+            .input('n_codtabla', sql.Int, n_codtabla)
+            .input('n_numero', sql.Int, n_numero)
+            .query("SELECT 1 FROM Tablas WHERE n_codtabla = @n_codtabla AND n_numero = @n_numero");
+
+        if (check.recordset.length > 0) {
+            return res.status(409).json({ message: 'Ya existe un registro con esas claves' });
+        }
+
+        await pool.request()
+            .input('n_codtabla', sql.Int, n_codtabla)
+            .input('c_descripcion', sql.Char(40), c_descripcion)
+            .input('n_numero', sql.Int, n_numero)
+            .input('c_describe', sql.Char(40), c_describe)
+            .input('conversion', conversion == null ? null : sql.Decimal(9, 2), conversion == null ? null : conversion)
+            .input('Afecto', sql.Int, Afecto)
+            .query("INSERT INTO Tablas (n_codtabla, c_descripcion, n_numero, c_describe, conversion, Afecto) VALUES (@n_codtabla, @c_descripcion, @n_numero, @c_describe, @conversion, @Afecto)");
+
+        res.status(201).json({ message: 'Registro creado', n_codtabla, n_numero });
+    } catch (e) {
+        console.error('Error creando tabla:', e);
+        res.status(500).json({ message: 'Error al crear registro' });
+    }
+});
+
+// PUT /api/mobile/tablas/:n_codtabla/:n_numero - Actualizar registro
+app.put('/api/mobile/tablas/:n_codtabla/:n_numero', isAuthenticated, requierePermiso('herramientas'), async (req, res) => {
+    const nCodtabla = Number(req.params.n_codtabla);
+    const nNumero = Number(req.params.n_numero);
+    const { c_descripcion, c_describe, conversion, Afecto } = req.body;
+
+    if (!Number.isInteger(nCodtabla) || !Number.isInteger(nNumero)) {
+        return res.status(400).json({ message: 'Claves no válidas' });
+    }
+
+    try {
+        const pool = await getConnection();
+        const result = await pool.request()
+            .input('n_codtabla', sql.Int, nCodtabla)
+            .input('n_numero', sql.Int, nNumero)
+            .input('c_descripcion', sql.Char(40), c_descripcion)
+            .input('c_describe', sql.Char(40), c_describe)
+            .input('conversion', conversion == null ? null : sql.Decimal(9, 2), conversion == null ? null : conversion)
+            .input('Afecto', sql.Int, Afecto)
+            .query("UPDATE Tablas SET c_descripcion = @c_descripcion, c_describe = @c_describe, conversion = @conversion, Afecto = @Afecto WHERE n_codtabla = @n_codtabla AND n_numero = @n_numero");
+
+        if (result.rowsAffected[0] === 0) {
+            return res.status(404).json({ message: 'Registro no encontrado' });
+        }
+
+        res.json({ message: 'Registro actualizado' });
+    } catch (e) {
+        console.error('Error actualizando tabla:', e);
+        res.status(500).json({ message: 'Error al actualizar registro' });
+    }
+});
+
+// DELETE /api/mobile/tablas/:n_codtabla/:n_numero - Eliminar registro
+app.delete('/api/mobile/tablas/:n_codtabla/:n_numero', isAuthenticated, requierePermiso('herramientas'), async (req, res) => {
+    const nCodtabla = Number(req.params.n_codtabla);
+    const nNumero = Number(req.params.n_numero);
+
+    if (!Number.isInteger(nCodtabla) || !Number.isInteger(nNumero)) {
+        return res.status(400).json({ message: 'Claves no válidas' });
+    }
+
+    try {
+        const pool = await getConnection();
+        const result = await pool.request()
+            .input('n_codtabla', sql.Int, nCodtabla)
+            .input('n_numero', sql.Int, nNumero)
+            .query("DELETE FROM Tablas WHERE n_codtabla = @n_codtabla AND n_numero = @n_numero");
+
+        if (result.rowsAffected[0] === 0) {
+            return res.status(404).json({ message: 'Registro no encontrado' });
+        }
+
+        res.json({ message: 'Registro eliminado' });
+    } catch (e) {
+        console.error('Error eliminando tabla:', e);
+        res.status(500).json({ message: 'Error al eliminar registro' });
+    }
+});
+
 // ==============================================================
 //  REVISIÓN DE DATOS EN LA NUBE (CÓDIGO DE RENDER RESTAURADO)
 // ==============================================================
