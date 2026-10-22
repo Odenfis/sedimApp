@@ -793,7 +793,8 @@ app.get('/api/mobile/tablas', isAuthenticated, requierePermiso('herramientas'), 
         `;
 
         if (q && q.trim() !== '') {
-            query += " AND (c_descripcion LIKE @q OR c_describe LIKE @q)";
+            // Búsqueda insensible a mayúsculas/minúsculas (COLLATE ..._CI_AS)
+            query += " AND (c_descripcion COLLATE SQL_Latin1_General_CP1_CI_AS LIKE @q OR c_describe COLLATE SQL_Latin1_General_CP1_CI_AS LIKE @q)";
             request.input('q', sql.VarChar, `%${q.trim()}%`);
         }
 
