@@ -814,6 +814,27 @@ app.get('/api/mobile/tablas', isAuthenticated, requierePermiso('herramientas'), 
     }
 });
 
+// GET /api/mobile/tablas/correlativo?n_codtabla=X - Siguiente n_numero para un código de tabla
+app.get('/api/mobile/tablas/correlativo', isAuthenticated, requierePermiso('herramientas'), async (req, res) => {
+    const nCodtabla = Number(req.query.n_codtabla);
+    if (!Number.isInteger(nCodtabla) || nCodtabla <= 0) {
+        return res.status(400).json({ message: 'n_codtabla inválido' });
+    }
+
+    try {
+        const pool = await getConnection();
+        const result = await pool.request()
+            .input('n_codtabla', sql.Int, nCodtabla)
+            .query("SELECT ISNULL(MAX(n_numero), 0) AS maximo FROM Tablas WHERE n_codtabla = @n_codtabla");
+
+        const maximo = result.recordset[0]?.maximo || 0;
+        res.json({ n_codtabla, siguienteNumero: maximo + 1 });
+    } catch (e) {
+        console.error('Error obteniendo correlativo de tabla:', e);
+        res.status(500).json({ message: 'Error al obtener correlativo' });
+    }
+});
+
 // GET /api/mobile/tablas/:n_codtabla/:n_numero - Obtener por PK compuesta
 app.get('/api/mobile/tablas/:n_codtabla/:n_numero', isAuthenticated, requierePermiso('herramientas'), async (req, res) => {
     const nCodtabla = Number(req.params.n_codtabla);
