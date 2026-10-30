@@ -993,9 +993,11 @@ app.get('/api/mobile/saldos', isAuthenticated, requierePermiso('saldos'), async 
 
         if (codpro && codpro.trim() !== '') {
             // Búsqueda por prefijo, insensible a mayúsculas/minúsculas.
-            // El parámetro es VarChar (no Char) para no arrastrar el relleno
-            // de espacios al construir el patrón LIKE.
-            query += " AND s.codpro COLLATE SQL_Latin1_General_CP1_CI_AS LIKE @codpro + '%'";
+            // IMPORTANTE: `codpro` es CHAR(10) y el padding heredado del
+            // sistema es irregular (algunos códigos vienen con espacios a la
+            // izquierda: '  0001    '). Por eso se recorta ANTES de comparar;
+            // sin el LTRIM/RTRIM la búsqueda no encuentra nada.
+            query += " AND LTRIM(RTRIM(s.codpro)) COLLATE SQL_Latin1_General_CP1_CI_AS LIKE @codpro + '%'";
             request.input('codpro', sql.VarChar, codpro.trim());
         }
 
@@ -1032,9 +1034,9 @@ app.get('/api/mobile/saldos/:codpro/:almacen/:lote', isAuthenticated, requierePe
     try {
         const pool = await getConnection();
         const result = await pool.request()
-            .input('codpro', sql.Char(10), codpro)
+            .input('codpro', sql.VarChar, String(codpro).trim())
             .input('almacen', sql.Int, almacenNum)
-            .input('lote', sql.Char(15), lote)
+            .input('lote', sql.VarChar, String(lote).trim())
             .query(`
                 SELECT
                     s.codpro,
@@ -1047,9 +1049,9 @@ app.get('/api/mobile/saldos/:codpro/:almacen/:lote', isAuthenticated, requierePe
                 FROM MPRestaurante.dbo.Saldos s
                 LEFT JOIN MPRestaurante.dbo.Productos p
                     ON p.CodPro = s.codpro
-                WHERE s.codpro = @codpro
+                WHERE LTRIM(RTRIM(s.codpro)) = LTRIM(RTRIM(@codpro))
                   AND s.almacen = @almacen
-                  AND s.lote = @lote
+                  AND LTRIM(RTRIM(s.lote)) = LTRIM(RTRIM(@lote))
             `);
 
         if (result.recordset.length === 0) {
@@ -1083,27 +1085,41 @@ app.post('/api/mobile/saldos', isAuthenticated, requierePermiso('saldos'), async
     try {
         const pool = await getConnection();
 
-        // Verificar que el producto exista (FK)
+        // Verificar que el producto exista (FK) y recuperar su CodPro EXACTO.
+        // `CodPro` es CHAR(10) con un padding heredado irregular (ej. '  0001    '),
+        // así que se busca por el valor recortado y se inserta el valor real
+        // de la tabla Productos: de otro modo la FK fallaría al insertar
+        // un codpro sin el relleno original.
         const productoCheck = await pool.request()
-            .input('codpro', sql.Char(10), codpro)
-            .query("SELECT 1 FROM MPRestaurante.dbo.Productos WHERE CodPro = @codpro");
+            .input('codpro', sql.VarChar, String(codpro).trim())
+            .query(`
+                SELECT TOP 1 CodPro AS codproReal
+                FROM MPRestaurante.dbo.Productos
+                WHERE LTRIM(RTRIM(CodPro)) = LTRIM(RTRIM(@codpro))
+            `);
         if (productoCheck.recordset.length === 0) {
             return res.status(400).json({ message: 'El código de producto no existe' });
         }
+        const codproReal = productoCheck.recordset[0].codproReal;
 
         // Verificar duplicado de PK compuesta
         const check = await pool.request()
-            .input('codpro', sql.Char(10), codpro)
+            .input('codpro', sql.VarChar, String(codpro).trim())
             .input('almacen', sql.Int, almacenNum)
-            .input('lote', sql.Char(15), lote)
-            .query("SELECT 1 FROM MPRestaurante.dbo.Saldos WHERE codpro = @codpro AND almacen = @almacen AND lote = @lote");
+            .input('lote', sql.VarChar, String(lote).trim())
+            .query(`
+                SELECT 1 FROM MPRestaurante.dbo.Saldos
+                WHERE LTRIM(RTRIM(codpro)) = LTRIM(RTRIM(@codpro))
+                  AND almacen = @almacen
+                  AND LTRIM(RTRIM(lote)) = LTRIM(RTRIM(@lote))
+            `);
 
         if (check.recordset.length > 0) {
             return res.status(409).json({ message: 'Ya existe un saldo con esas claves' });
         }
 
         await pool.request()
-            .input('codpro', sql.Char(10), codpro)
+            .input('codpro', sql.VarChar, codproReal)
             .input('almacen', sql.Int, almacenNum)
             .input('lote', sql.Char(15), lote || 'LOTE')
             .input('vencimiento', vencimiento ? sql.SmallDateTime : null, vencimiento || null)
@@ -1111,7 +1127,12 @@ app.post('/api/mobile/saldos', isAuthenticated, requierePermiso('saldos'), async
             .input('protocolo', sql.Bit, protocolo === true || protocolo === 1 || protocolo === '1' ? 1 : 0)
             .query("INSERT INTO MPRestaurante.dbo.Saldos (codpro, almacen, lote, vencimiento, saldo, protocolo) VALUES (@codpro, @almacen, @lote, @vencimiento, @saldo, @protocolo)");
 
-        res.status(201).json({ message: 'Saldo creado', codpro, almacen: almacenNum, lote });
+        res.status(201).json({
+            message: 'Saldo creado',
+            codpro: String(codpro).trim(),
+            almacen: almacenNum,
+            lote: String(lote).trim()
+        });
     } catch (e) {
         console.error('Error creando saldo:', e);
         res.status(500).json({ message: 'Error al crear registro' });
@@ -1140,13 +1161,19 @@ app.put('/api/mobile/saldos/:codpro/:almacen/:lote', isAuthenticated, requierePe
     try {
         const pool = await getConnection();
         const result = await pool.request()
-            .input('codpro', sql.Char(10), codpro)
+            .input('codpro', sql.VarChar, String(codpro).trim())
             .input('almacen', sql.Int, almacenNum)
-            .input('lote', sql.Char(15), lote)
+            .input('lote', sql.VarChar, String(lote).trim())
             .input('vencimiento', vencimiento ? sql.SmallDateTime : null, vencimiento || null)
             .input('saldo', sql.Decimal(9, 2), saldoNum)
             .input('protocolo', sql.Bit, protocolo === true || protocolo === 1 || protocolo === '1' ? 1 : 0)
-            .query("UPDATE MPRestaurante.dbo.Saldos SET vencimiento = @vencimiento, saldo = @saldo, protocolo = @protocolo WHERE codpro = @codpro AND almacen = @almacen AND lote = @lote");
+            .query(`
+                UPDATE MPRestaurante.dbo.Saldos
+                SET vencimiento = @vencimiento, saldo = @saldo, protocolo = @protocolo
+                WHERE LTRIM(RTRIM(codpro)) = LTRIM(RTRIM(@codpro))
+                  AND almacen = @almacen
+                  AND LTRIM(RTRIM(lote)) = LTRIM(RTRIM(@lote))
+            `);
 
         if (result.rowsAffected[0] === 0) {
             return res.status(404).json({ message: 'Registro no encontrado' });
@@ -1171,10 +1198,15 @@ app.delete('/api/mobile/saldos/:codpro/:almacen/:lote', isAuthenticated, requier
     try {
         const pool = await getConnection();
         const result = await pool.request()
-            .input('codpro', sql.Char(10), codpro)
+            .input('codpro', sql.VarChar, String(codpro).trim())
             .input('almacen', sql.Int, almacenNum)
-            .input('lote', sql.Char(15), lote)
-            .query("DELETE FROM MPRestaurante.dbo.Saldos WHERE codpro = @codpro AND almacen = @almacen AND lote = @lote");
+            .input('lote', sql.VarChar, String(lote).trim())
+            .query(`
+                DELETE FROM MPRestaurante.dbo.Saldos
+                WHERE LTRIM(RTRIM(codpro)) = LTRIM(RTRIM(@codpro))
+                  AND almacen = @almacen
+                  AND LTRIM(RTRIM(lote)) = LTRIM(RTRIM(@lote))
+            `);
 
         if (result.rowsAffected[0] === 0) {
             return res.status(404).json({ message: 'Registro no encontrado' });
