@@ -957,6 +957,203 @@ app.delete('/api/mobile/tablas/:n_codtabla/:n_numero', isAuthenticated, requiere
     }
 });
 
+// ==========================================
+//  MÓDULO: GESTIÓN DE SALDOS (CRUD completo)
+//  Requiere permiso 'saldos'
+//  Tabla: MPRestaurante.dbo.Saldos (PK compuesta: codpro + almacen + lote)
+//  FK: codpro → MPRestaurante.dbo.Productos(CodPro)
+// ==========================================
+
+// GET /api/mobile/saldos - Listado con paginación y filtro opcional por codpro
+app.get('/api/mobile/saldos', isAuthenticated, requierePermiso('saldos'), async (req, res) => {
+    const { page = 1, pageSize = 50, codpro } = req.query;
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const size = Math.max(1, Math.min(parseInt(pageSize) || 50, 200));
+    const offset = (pageNum - 1) * size;
+
+    try {
+        const pool = await getConnection();
+        const request = pool.request();
+
+        let query = `
+            SELECT codpro, almacen, lote, vencimiento, saldo, protocolo
+            FROM MPRestaurante.dbo.Saldos
+            WHERE 1=1
+        `;
+
+        if (codpro && codpro.trim() !== '') {
+            query += " AND codpro = @codpro";
+            request.input('codpro', sql.Char(10), codpro.trim());
+        }
+
+        query += " ORDER BY codpro, almacen, lote OFFSET @offset ROWS FETCH NEXT @size ROWS ONLY";
+        request.input('offset', sql.Int, offset);
+        request.input('size', sql.Int, size);
+
+        const result = await request.query(query);
+        res.json({
+            data: result.recordset,
+            page: pageNum,
+            pageSize: size
+        });
+    } catch (e) {
+        console.error('Error listando saldos:', e);
+        res.status(500).json({ message: 'Error al listar saldos' });
+    }
+});
+
+// GET /api/mobile/saldos/:codpro/:almacen/:lote - Obtener por PK compuesta
+app.get('/api/mobile/saldos/:codpro/:almacen/:lote', isAuthenticated, requierePermiso('saldos'), async (req, res) => {
+    const { codpro, almacen, lote } = req.params;
+    const almacenNum = Number(almacen);
+
+    if (!almacen || !Number.isInteger(almacenNum) || almacenNum <= 0) {
+        return res.status(400).json({ message: 'Almacén no válido' });
+    }
+
+    try {
+        const pool = await getConnection();
+        const result = await pool.request()
+            .input('codpro', sql.Char(10), codpro)
+            .input('almacen', sql.Int, almacenNum)
+            .input('lote', sql.Char(15), lote)
+            .query("SELECT codpro, almacen, lote, vencimiento, saldo, protocolo FROM MPRestaurante.dbo.Saldos WHERE codpro = @codpro AND almacen = @almacen AND lote = @lote");
+
+        if (result.recordset.length === 0) {
+            return res.status(404).json({ message: 'Registro no encontrado' });
+        }
+        res.json(result.recordset[0]);
+    } catch (e) {
+        console.error('Error obteniendo saldo:', e);
+        res.status(500).json({ message: 'Error al obtener registro' });
+    }
+});
+
+// POST /api/mobile/saldos - Crear registro
+app.post('/api/mobile/saldos', isAuthenticated, requierePermiso('saldos'), async (req, res) => {
+    const { codpro, almacen, lote, vencimiento, saldo, protocolo } = req.body;
+
+    if (!codpro || almacen == null || lote == null || saldo == null) {
+        return res.status(400).json({ message: 'Campos requeridos faltantes (codpro, almacen, lote, saldo)' });
+    }
+
+    const almacenNum = Number(almacen);
+    if (!Number.isInteger(almacenNum) || almacenNum <= 0) {
+        return res.status(400).json({ message: 'Almacén no válido' });
+    }
+
+    const saldoNum = parseFloat(saldo);
+    if (isNaN(saldoNum)) {
+        return res.status(400).json({ message: 'Saldo no válido' });
+    }
+
+    try {
+        const pool = await getConnection();
+
+        // Verificar que el producto exista (FK)
+        const productoCheck = await pool.request()
+            .input('codpro', sql.Char(10), codpro)
+            .query("SELECT 1 FROM MPRestaurante.dbo.Productos WHERE CodPro = @codpro");
+        if (productoCheck.recordset.length === 0) {
+            return res.status(400).json({ message: 'El código de producto no existe' });
+        }
+
+        // Verificar duplicado de PK compuesta
+        const check = await pool.request()
+            .input('codpro', sql.Char(10), codpro)
+            .input('almacen', sql.Int, almacenNum)
+            .input('lote', sql.Char(15), lote)
+            .query("SELECT 1 FROM MPRestaurante.dbo.Saldos WHERE codpro = @codpro AND almacen = @almacen AND lote = @lote");
+
+        if (check.recordset.length > 0) {
+            return res.status(409).json({ message: 'Ya existe un saldo con esas claves' });
+        }
+
+        await pool.request()
+            .input('codpro', sql.Char(10), codpro)
+            .input('almacen', sql.Int, almacenNum)
+            .input('lote', sql.Char(15), lote || 'LOTE')
+            .input('vencimiento', vencimiento ? sql.SmallDateTime : null, vencimiento || null)
+            .input('saldo', sql.Decimal(9, 2), saldoNum)
+            .input('protocolo', sql.Bit, protocolo === true || protocolo === 1 || protocolo === '1' ? 1 : 0)
+            .query("INSERT INTO MPRestaurante.dbo.Saldos (codpro, almacen, lote, vencimiento, saldo, protocolo) VALUES (@codpro, @almacen, @lote, @vencimiento, @saldo, @protocolo)");
+
+        res.status(201).json({ message: 'Saldo creado', codpro, almacen: almacenNum, lote });
+    } catch (e) {
+        console.error('Error creando saldo:', e);
+        res.status(500).json({ message: 'Error al crear registro' });
+    }
+});
+
+// PUT /api/mobile/saldos/:codpro/:almacen/:lote - Actualizar registro
+app.put('/api/mobile/saldos/:codpro/:almacen/:lote', isAuthenticated, requierePermiso('saldos'), async (req, res) => {
+    const { codpro, almacen, lote } = req.params;
+    const { vencimiento, saldo, protocolo } = req.body;
+    const almacenNum = Number(almacen);
+
+    if (!almacen || !Number.isInteger(almacenNum) || almacenNum <= 0) {
+        return res.status(400).json({ message: 'Almacén no válido' });
+    }
+
+    if (saldo == null) {
+        return res.status(400).json({ message: 'Saldo es requerido' });
+    }
+
+    const saldoNum = parseFloat(saldo);
+    if (isNaN(saldoNum)) {
+        return res.status(400).json({ message: 'Saldo no válido' });
+    }
+
+    try {
+        const pool = await getConnection();
+        const result = await pool.request()
+            .input('codpro', sql.Char(10), codpro)
+            .input('almacen', sql.Int, almacenNum)
+            .input('lote', sql.Char(15), lote)
+            .input('vencimiento', vencimiento ? sql.SmallDateTime : null, vencimiento || null)
+            .input('saldo', sql.Decimal(9, 2), saldoNum)
+            .input('protocolo', sql.Bit, protocolo === true || protocolo === 1 || protocolo === '1' ? 1 : 0)
+            .query("UPDATE MPRestaurante.dbo.Saldos SET vencimiento = @vencimiento, saldo = @saldo, protocolo = @protocolo WHERE codpro = @codpro AND almacen = @almacen AND lote = @lote");
+
+        if (result.rowsAffected[0] === 0) {
+            return res.status(404).json({ message: 'Registro no encontrado' });
+        }
+
+        res.json({ message: 'Saldo actualizado' });
+    } catch (e) {
+        console.error('Error actualizando saldo:', e);
+        res.status(500).json({ message: 'Error al actualizar registro' });
+    }
+});
+
+// DELETE /api/mobile/saldos/:codpro/:almacen/:lote - Eliminar registro
+app.delete('/api/mobile/saldos/:codpro/:almacen/:lote', isAuthenticated, requierePermiso('saldos'), async (req, res) => {
+    const { codpro, almacen, lote } = req.params;
+    const almacenNum = Number(almacen);
+
+    if (!almacen || !Number.isInteger(almacenNum) || almacenNum <= 0) {
+        return res.status(400).json({ message: 'Almacén no válido' });
+    }
+
+    try {
+        const pool = await getConnection();
+        const result = await pool.request()
+            .input('codpro', sql.Char(10), codpro)
+            .input('almacen', sql.Int, almacenNum)
+            .input('lote', sql.Char(15), lote)
+            .query("DELETE FROM MPRestaurante.dbo.Saldos WHERE codpro = @codpro AND almacen = @almacen AND lote = @lote");
+
+        if (result.rowsAffected[0] === 0) {
+            return res.status(404).json({ message: 'Registro no encontrado' });
+        }
+
+        res.json({ message: 'Saldo eliminado' });
+    } catch (e) {
+        console.error('Error eliminando saldo:', e);
+        res.status(500).json({ message: 'Error al eliminar registro' });
+    }
+});
+
 // ==============================================================
 //  REVISIÓN DE DATOS EN LA NUBE (CÓDIGO DE RENDER RESTAURADO)
 // ==============================================================
