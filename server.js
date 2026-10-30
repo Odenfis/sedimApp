@@ -976,25 +976,43 @@ app.get('/api/mobile/saldos', isAuthenticated, requierePermiso('saldos'), async 
         const request = pool.request();
 
         let query = `
-            SELECT codpro, almacen, lote, vencimiento, saldo, protocolo
-            FROM MPRestaurante.dbo.Saldos
+            SELECT
+                s.codpro,
+                s.almacen,
+                s.lote,
+                s.vencimiento,
+                s.saldo,
+                s.protocolo,
+                LTRIM(RTRIM(p.Nombre)) AS nombre,
+                COUNT(*) OVER() AS totalRegistros
+            FROM MPRestaurante.dbo.Saldos s
+            LEFT JOIN MPRestaurante.dbo.Productos p
+                ON p.CodPro = s.codpro
             WHERE 1=1
         `;
 
         if (codpro && codpro.trim() !== '') {
-            query += " AND codpro = @codpro";
-            request.input('codpro', sql.Char(10), codpro.trim());
+            // Búsqueda por prefijo, insensible a mayúsculas/minúsculas.
+            // El parámetro es VarChar (no Char) para no arrastrar el relleno
+            // de espacios al construir el patrón LIKE.
+            query += " AND s.codpro COLLATE SQL_Latin1_General_CP1_CI_AS LIKE @codpro + '%'";
+            request.input('codpro', sql.VarChar, codpro.trim());
         }
 
-        query += " ORDER BY codpro, almacen, lote OFFSET @offset ROWS FETCH NEXT @size ROWS ONLY";
+        query += " ORDER BY s.codpro, s.almacen, s.lote OFFSET @offset ROWS FETCH NEXT @size ROWS ONLY";
         request.input('offset', sql.Int, offset);
         request.input('size', sql.Int, size);
 
         const result = await request.query(query);
+        const filas = result.recordset || [];
+        // `totalRegistros` solo se usa para el contador: no se envía en cada fila.
+        const total = filas.length > 0 ? filas[0].totalRegistros : 0;
+        const data = filas.map(({ totalRegistros, ...fila }) => fila);
         res.json({
-            data: result.recordset,
+            data,
             page: pageNum,
-            pageSize: size
+            pageSize: size,
+            total
         });
     } catch (e) {
         console.error('Error listando saldos:', e);
@@ -1017,7 +1035,22 @@ app.get('/api/mobile/saldos/:codpro/:almacen/:lote', isAuthenticated, requierePe
             .input('codpro', sql.Char(10), codpro)
             .input('almacen', sql.Int, almacenNum)
             .input('lote', sql.Char(15), lote)
-            .query("SELECT codpro, almacen, lote, vencimiento, saldo, protocolo FROM MPRestaurante.dbo.Saldos WHERE codpro = @codpro AND almacen = @almacen AND lote = @lote");
+            .query(`
+                SELECT
+                    s.codpro,
+                    s.almacen,
+                    s.lote,
+                    s.vencimiento,
+                    s.saldo,
+                    s.protocolo,
+                    LTRIM(RTRIM(p.Nombre)) AS nombre
+                FROM MPRestaurante.dbo.Saldos s
+                LEFT JOIN MPRestaurante.dbo.Productos p
+                    ON p.CodPro = s.codpro
+                WHERE s.codpro = @codpro
+                  AND s.almacen = @almacen
+                  AND s.lote = @lote
+            `);
 
         if (result.recordset.length === 0) {
             return res.status(404).json({ message: 'Registro no encontrado' });
