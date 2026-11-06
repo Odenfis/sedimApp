@@ -382,6 +382,8 @@ function showView(viewName) {
             cargarEstadisticaVentas();
         }
 
+        if (viewName === 'seguimiento-abonos') inicializarAbonos();
+
         if (viewName === 'comparativo-banco') {
             inicializarComparativoBanco();
         }
@@ -3258,4 +3260,119 @@ async function exportarComparativoBanco(format, button) {
         document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(link.href);
     } catch (error) { console.error('Error exportando comparativo:', error); alert(error.message); }
     finally { button.disabled = false; button.innerHTML = original; }
+}
+
+
+// Seguimiento: resultados, selección por documento y búsquedas independientes.
+const abonosState = { grupos: [], seleccion: new Map(), pagina: 1, abiertos: new Set(), exactos: {}, sugerencias: {}, inicializado: false, exportando: false };
+const abonosEl = id => document.getElementById(`abonos-${id}`);
+const abonosKey = g => g.documento ? `doc:${g.documento.trim().toLocaleLowerCase('es')}` : `vacio:${g.salidas[0].Numero}`;
+const abonosMoneda = row => String(row?.MonedaNombre ?? row?.monedaNombre ?? '').trim() || `Moneda ${row?.Moneda ?? row?.moneda ?? 'desconocida'}`;
+const abonosFecha = v => String(v || '').slice(0, 10);
+const abonosMonto = v => Number(v || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+const abonosSede = e => e.Sede?.trim() || (e.Cajero == null ? 'Sin cajero' : `Cajero ${e.Cajero} (sin sede)`);
+function abonosFiltros() { return { inicio: abonosEl('inicio').value, fin: abonosEl('fin').value, cuenta: abonosEl('cuenta').value, documento: abonosEl('documento').value, cuentaExacta: abonosState.exactos.cuenta || '', documentoExacto: abonosState.exactos.documento || '' }; }
+function inicializarAbonos() {
+    if (abonosState.inicializado) return;
+    abonosState.inicializado = true;
+    const now = new Date(), fecha = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    abonosEl('inicio').value = fecha(new Date(now.getFullYear(), now.getMonth(), 1)); abonosEl('fin').value = fecha(now);
+    abonosEl('form').addEventListener('submit', consultarAbonos);
+    ['cuenta','documento'].forEach(abonosAutocomplete);
+    ['inicio','fin'].forEach(id => abonosEl(id).addEventListener('change', () => abonosInvalidar('documento')));
+    document.addEventListener('keydown', e => {
+        if (!abonosEl('panel').classList.contains('is-open')) return;
+        if (e.key === 'Escape') { e.preventDefault(); abonosPanel(false); }
+        if (e.key === 'Tab') {
+            const buttons = [...abonosEl('panel').querySelectorAll('button:not(:disabled)')].filter(b => b.getClientRects().length);
+            const first = buttons[0], last = buttons.at(-1);
+            if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+            else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        }
+    });
+    window.matchMedia('(min-width:1100px)').addEventListener('change', e => { if (e.matches) abonosPanel(false); });
+    abonosRender();
+}
+function abonosInvalidar(tipo) {
+    delete abonosState.exactos[tipo];
+    const state = abonosState.sugerencias[tipo]; if (!state) return;
+    clearTimeout(state.timer); state.controller?.abort(); state.version++; state.opciones = []; state.active = -1; state.box.hidden = true; state.input.setAttribute('aria-expanded','false'); state.input.removeAttribute('aria-activedescendant');
+}
+function abonosAutocomplete(tipo) {
+    const input = abonosEl(tipo), wrapper = input.parentElement;
+    wrapper.classList.add('abonos-combo');
+    const box = document.createElement('div'); box.id = `abonos-options-${tipo}`; box.className = 'abonos-options'; box.hidden = true; box.setAttribute('role','listbox');
+    const clear = document.createElement('button'); clear.type = 'button'; clear.className = 'abonos-clear'; clear.textContent = '×'; clear.setAttribute('aria-label', `Limpiar ${tipo}`);
+    const field = document.createElement('div'); field.className = 'abonos-input-wrap'; input.replaceWith(field); field.append(input, clear, box);
+    const hint = document.createElement('small'); hint.id = `abonos-hint-${tipo}`; hint.className = 'abonos-hint'; hint.textContent = 'Desde 2 caracteres'; wrapper.append(hint); input.setAttribute('aria-describedby', hint.id); input.setAttribute('role','combobox'); input.setAttribute('autocomplete','off'); input.setAttribute('aria-autocomplete','list'); input.setAttribute('aria-controls',box.id); input.setAttribute('aria-expanded','false');
+    const state = { input, box, version:0, opciones:[], active:-1 }; abonosState.sugerencias[tipo] = state;
+    const close = () => { state.controller?.abort(); clearTimeout(state.timer); state.version++; box.hidden = true; input.setAttribute('aria-expanded','false'); input.removeAttribute('aria-activedescendant'); };
+    const choose = index => { const option = state.opciones[index]; if (!option) return; input.value = option.valor; abonosState.exactos[tipo] = option.valor; if (tipo === 'cuenta') abonosInvalidar('documento'); close(); input.focus(); };
+    const changed = () => {
+        abonosInvalidar(tipo); if (tipo === 'cuenta') abonosInvalidar('documento');
+        if (input.value.trim().length < 2) return;
+        const version = state.version;
+        state.timer = setTimeout(async () => {
+            state.controller = new AbortController();
+            try {
+                const r = await fetch('/api/reports/seguimiento-abonos/sugerencias', { method:'POST', headers:{'Content-Type':'application/json'}, signal:state.controller.signal, body:JSON.stringify({tipo,texto:input.value,filtros:abonosFiltros()}) });
+                const data = await r.json(); if (version !== state.version) return; if (!r.ok) throw new Error(data.message);
+                state.opciones = data.opciones; state.active = -1;
+                box.innerHTML = data.opciones.map((o,i) => `<div role="option" aria-selected="false" id="${box.id}-${i}" data-index="${i}">${o.banco ? `<strong>${escapeHtmlCfg(o.banco)}</strong><span>${escapeHtmlCfg(o.valor)}</span>` : escapeHtmlCfg(o.valor)}</div>`).join('') + `<small>${data.hayMas ? 'Más coincidencias: precise la búsqueda.' : data.opciones.length ? 'Seleccione una coincidencia o conserve el texto libre.' : 'Sin coincidencias.'}</small>`;
+                box.hidden = false; input.setAttribute('aria-expanded','true');
+            } catch (e) { if (e.name !== 'AbortError' && version === state.version) { box.textContent = e.message || 'Error cargando sugerencias'; box.hidden = false; input.setAttribute('aria-expanded','true'); } }
+        },300);
+    };
+    input.addEventListener('input',changed); clear.addEventListener('click',()=>{ input.value=''; changed(); input.focus(); });
+    box.addEventListener('mousedown',e=>e.preventDefault()); box.addEventListener('click',e=>{const option=e.target.closest('[data-index]');if(option)choose(Number(option.dataset.index));});
+    input.addEventListener('blur',close);
+    input.addEventListener('keydown',e=>{
+        if(e.key==='Escape'){close();return;} if(box.hidden)return;
+        if(['ArrowDown','ArrowUp'].includes(e.key) && state.opciones.length){e.preventDefault();state.active=(state.active+(e.key==='ArrowDown'?1:-1)+state.opciones.length)%state.opciones.length;box.querySelectorAll('[role=option]').forEach((o,i)=>o.setAttribute('aria-selected',String(i===state.active)));input.setAttribute('aria-activedescendant',`${box.id}-${state.active}`);box.children[state.active].scrollIntoView({block:'nearest'});}
+        if(e.key==='Enter' && state.active>=0){e.preventDefault();choose(state.active);}
+    });
+}
+async function consultarAbonos(event) {
+    event.preventDefault(); const button = abonosEl('form').querySelector('[type=submit]'); button.disabled = true; abonosEl('status').textContent = 'Consultando…';
+    try { const r = await fetch('/api/reports/seguimiento-abonos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filtros:abonosFiltros()})}); const data=await r.json(); if(!r.ok)throw new Error(data.message); abonosState.grupos=data.grupos;abonosState.pagina=1;abonosState.abiertos.clear();abonosRender();abonosEl('status').textContent=`${data.grupos.length} grupos encontrados.`; }
+    catch(e){abonosState.grupos=[];abonosRender();abonosEl('status').textContent=e.message || 'No se pudo consultar.';} finally{button.disabled=false;}
+}
+function abonosTabla(rows, columns) {
+    return `<div class="abonos-table-wrap"><table><thead><tr>${columns.map(([label])=>`<th>${label}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${columns.map(([label,get])=>`<td data-label="${label}">${escapeHtmlCfg(get(r) ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+}
+function abonosRender() {
+    const start=(abonosState.pagina-1)*20;
+    abonosEl('resultados').innerHTML=abonosState.grupos.slice(start,start+20).map((g,j)=>{
+        const i=start+j, dates=g.salidas.map(s=>abonosFecha(s.Fecha)).sort();
+        return `<article class="abonos-group"><div class="abonos-row"><div><h3>${escapeHtmlCfg(g.documento || 'Sin documento')}</h3><small>${dates[0]}${dates.at(-1)!==dates[0]?` – ${dates.at(-1)}`:''} · ${escapeHtmlCfg([...new Set(g.salidas.map(s=>s.Banco))].join(', '))}</small><span class="abonos-badge ${g.entradas.length ? 'abonos-badge-ok' : 'abonos-badge-pending'}">${g.entradas.length?'Con entradas':'Sin entrada'}</span></div><div class="abonos-amounts">${g.totales.map(t=>`<div><strong>${escapeHtmlCfg(abonosMoneda(t))} · ${abonosMonto(t.salida)}</strong><small>Entrada ${abonosMonto(t.entrada)} · Diferencia ${abonosMonto(t.diferencia)}</small></div>`).join('')}</div><div class="abonos-row-actions"><button type="button" aria-expanded="${abonosState.abiertos.has(abonosKey(g))}" aria-controls="abonos-detail-${i}" onclick="abonosDetalle(${i},this)">Ver detalle</button><button type="button" data-abonos-add="${i}" onclick="abonosAgregar(${i})"></button></div></div><div id="abonos-detail-${i}" class="abonos-detail" ${abonosState.abiertos.has(abonosKey(g))?'':'hidden'}><h4>Salidas bancarias</h4>${abonosTabla(g.salidas,[['Fecha',s=>abonosFecha(s.Fecha)],['Cuenta',s=>s.Cuenta],['Banco',s=>s.Banco],['Detalle',s=>s.Detalle],['Moneda',abonosMoneda],['Monto',s=>abonosMonto(s.Monto)]])}<h4>Entradas de caja</h4>${g.entradas.length?abonosTabla(g.entradas,[['Fecha',e=>abonosFecha(e.Fecha)],['Sede / Cajero',abonosSede],['Empresa',e=>e.Empresa],['Destinatario',e=>e.Destinatario],['Moneda',abonosMoneda],['Monto',e=>abonosMonto(e.Monto)]]):'<p>No se encontraron entradas.</p>'}</div></article>`;
+    }).join('') || '<div class="abonos-empty">Sin resultados. Ajuste los filtros y pulse Consultar.</div>';
+    const pages=Math.max(1,Math.ceil(abonosState.grupos.length/20));
+    abonosEl('pages').innerHTML=`<button type="button" ${abonosState.pagina<=1?'disabled':''} onclick="abonosPagina(-1)">Anterior</button><span>Página ${abonosState.pagina} de ${pages} · ${abonosState.grupos.length} grupos</span><button type="button" ${abonosState.pagina>=pages?'disabled':''} onclick="abonosPagina(1)">Siguiente</button>`;
+    abonosRenderSeleccion();
+}
+function abonosPagina(delta){abonosState.pagina+=delta;abonosRender();abonosEl('pages').querySelector('button:not(:disabled)')?.focus();}
+function abonosDetalle(i,button){const k=abonosKey(abonosState.grupos[i]);abonosState.abiertos.has(k)?abonosState.abiertos.delete(k):abonosState.abiertos.add(k);abonosEl(`detail-${i}`).hidden=!abonosState.abiertos.has(k);button.setAttribute('aria-expanded',String(abonosState.abiertos.has(k)));}
+function abonosUnir(grupos){
+    const ids=new Set([...abonosState.seleccion.values()].flatMap(g=>g.salidas.map(s=>s.Numero)));
+    grupos.forEach(g=>g.salidas.forEach(s=>ids.add(s.Numero)));if(ids.size>1000){abonosEl('status').textContent='La selección admite hasta 1000 salidas.';return;}
+    grupos.forEach(g=>{const k=abonosKey(g),old=abonosState.seleccion.get(k);abonosState.seleccion.set(k,{...g,salidas:[...new Map([...(old?.salidas || []),...g.salidas].map(s=>[s.Numero,s])).values()],entradas:[...new Map(g.entradas.map(e=>[e.Numero,e])).values()]});});abonosRenderSeleccion();
+}
+function abonosAgregar(i){const g=abonosState.grupos[i],old=abonosState.seleccion.get(abonosKey(g));if(old && g.salidas.every(s=>old.salidas.some(o=>o.Numero===s.Numero)))abonosState.seleccion.delete(abonosKey(g));else {abonosUnir([g]);return;}abonosRenderSeleccion();}
+function abonosSeleccionarResultados(){abonosUnir(abonosState.grupos);}
+function abonosLimpiar(){abonosState.seleccion.clear();abonosRenderSeleccion();}
+function abonosQuitar(index){abonosState.seleccion.delete([...abonosState.seleccion.keys()][index]);abonosRenderSeleccion();abonosEl('selected').querySelector('button')?.focus();}
+function abonosRenderSeleccion(){
+    const grupos=[...abonosState.seleccion.values()],totals=new Map();grupos.forEach(g=>g.salidas.forEach(s=>totals.set(s.Moneda,(totals.get(s.Moneda)||0)+Math.round(Number(s.Monto)*10000))));
+    abonosEl('selection-count').textContent=`${grupos.length} documentos · ${grupos.reduce((n,g)=>n+g.salidas.length,0)} salidas`;
+    abonosEl('mobile-selection').textContent=`Ver selección (${grupos.length})`;
+    abonosEl('selected').innerHTML=grupos.map((g,i)=>`<div class="abonos-selected-row"><div><strong>${escapeHtmlCfg(g.documento || 'Sin documento')}</strong><small>${escapeHtmlCfg([...new Set(g.salidas.map(s=>s.Banco))].join(', '))} · ${g.salidas.length} salidas</small><small>${escapeHtmlCfg([...new Set(g.entradas.map(abonosSede))].join(', ') || 'Sin entradas')}</small>${[...new Set(g.salidas.map(s=>s.Moneda))].map(m=>`<small>${escapeHtmlCfg(abonosMoneda(g.salidas.find(s=>s.Moneda===m)))}: ${abonosMonto(g.salidas.filter(s=>s.Moneda===m).reduce((n,s)=>n+Math.round(Number(s.Monto)*10000),0)/10000)}</small>`).join('')}</div><button type="button" onclick="abonosQuitar(${i})" aria-label="Quitar ${escapeHtmlCfg(g.documento || 'salida sin documento')}">Quitar</button></div>`).join('') || '<p class="abonos-empty">Agregue documentos desde los resultados para preparar su reporte.</p>';
+    abonosEl('selection-totals').innerHTML=[...totals].map(([m,t])=>`<p><strong>Total salidas · ${escapeHtmlCfg(abonosMoneda(grupos.flatMap(g=>g.salidas).find(s=>s.Moneda===m)))}: ${abonosMonto(t/10000)}</strong></p>`).join('');
+    document.querySelectorAll('[data-abonos-add]').forEach(button=>{const g=abonosState.grupos[Number(button.dataset.abonosAdd)],old=abonosState.seleccion.get(abonosKey(g));const all=old && g.salidas.every(s=>old.salidas.some(o=>o.Numero===s.Numero));button.textContent=all?'Agregado · Quitar':old?'Completar selección':'Agregar al reporte';button.setAttribute('aria-pressed',String(Boolean(all)));});
+    document.querySelectorAll('[data-abonos-export]').forEach(b=>b.disabled=!grupos.length || abonosState.exportando);
+}
+function abonosPanel(open){const panel=abonosEl('panel');panel.classList.toggle('is-open',open);abonosEl('backdrop').hidden=!open;document.body.classList.toggle('abonos-panel-open',open);if(open){panel.setAttribute('role','dialog');panel.setAttribute('aria-modal','true');abonosEl('panel-close').focus();}else{panel.removeAttribute('role');panel.removeAttribute('aria-modal');if(abonosEl('mobile-selection').getClientRects().length)abonosEl('mobile-selection').focus();}}
+async function abonosExportar(formato){
+    if(abonosState.exportando || !abonosState.seleccion.size)return;
+    abonosState.exportando=true;abonosRenderSeleccion();abonosEl('status').textContent='Generando archivo…';
+    try{const ids=[...new Set([...abonosState.seleccion.values()].flatMap(g=>g.salidas.map(s=>s.Numero)))];const response=await fetch(`/api/reports/seguimiento-abonos/export/${formato}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids})});if(!response.ok){const data=await response.json();throw new Error(data.message);}const url=URL.createObjectURL(await response.blob()),link=document.createElement('a');link.href=url;link.download=`seguimiento-abonos-banco.${formato==='excel'?'xlsx':'pdf'}`;document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);abonosEl('status').textContent='Archivo generado.';}catch(e){abonosEl('status').textContent=e.message || 'No se pudo exportar.';}finally{abonosState.exportando=false;abonosRenderSeleccion();}
 }

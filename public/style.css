@@ -2653,3 +2653,98 @@ form label {
 
 .cc-legend-hint { color:var(--text-secondary); font-size:.72rem; margin:10px 0 0; }
 .cc-legend-hint[hidden] { display:none; }
+
+.abonos-filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.abonos-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+.abonos-actions button, .abonos-selected-row button { padding: 8px 12px; cursor: pointer; }
+.abonos-selection, .abonos-group { border: 1px solid var(--border-color, #ddd); border-radius: 8px; padding: 16px; margin: 14px 0; }
+.abonos-selection summary { cursor: pointer; font-weight: 600; }
+.abonos-selected-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 0; overflow-wrap: anywhere; }
+.abonos-group h2 { font-size: 1.1rem; overflow-wrap: anywhere; }
+.abonos-group h2 small { font-weight: normal; font-size: .8rem; }
+.abonos-group h3 { font-size: 1rem; margin-top: 16px; }
+.abonos-table-wrap { overflow-x: auto; }
+.abonos-table-wrap table { width: 100%; border-collapse: collapse; }
+.abonos-table-wrap th, .abonos-table-wrap td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border-color, #ddd); }
+
+/* Seguimiento: reglas aisladas de los formularios globales. */
+#view-seguimiento-abonos #abonos-form { display:grid; grid-template-columns:150px 150px minmax(160px,1fr) minmax(140px,1fr) auto; align-items:end; justify-content:initial; width:100%; max-width:none; height:auto; margin:18px 0 10px; padding:16px; box-sizing:border-box; gap:12px; }
+#view-seguimiento-abonos input { width:100%; min-width:0; box-sizing:border-box; padding:10px; border:1px solid var(--border-color); border-radius:7px; background:var(--card-bg); color:var(--text-primary); }
+#view-seguimiento-abonos button { cursor:pointer; padding:9px 12px; border:1px solid var(--border-color); border-radius:7px; background:var(--card-bg); color:var(--text-primary); font:inherit; font-size:.85rem; }
+#view-seguimiento-abonos button:disabled { opacity:.45; cursor:default; }
+#view-seguimiento-abonos button:focus-visible, #view-seguimiento-abonos input:focus-visible { outline:2px solid var(--accent,#3b82f6); outline-offset:2px; }
+#view-seguimiento-abonos button[aria-pressed=true], #view-seguimiento-abonos button[type=submit] { background:var(--accent,#2563eb); color:white; }
+.abonos-layout { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:20px; align-items:start; }
+.abonos-main { min-width:0; }
+.abonos-toolbar, .abonos-row, #abonos-pages { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.abonos-toolbar h2 { font-size:1.05rem; margin:0; }
+.abonos-group { padding:0; overflow:hidden; background:var(--card-bg); }
+.abonos-row { padding:16px; flex-wrap:wrap; }
+.abonos-row h3 { margin:0 0 5px; font-size:1rem; }
+.abonos-row small, .abonos-selected-row small { display:block; color:var(--text-secondary); overflow-wrap:anywhere; }
+.abonos-row > div:first-child { flex:1; min-width:140px; overflow-wrap:anywhere; }
+.abonos-amounts { font-size:.85rem; }
+.abonos-row-actions { display:flex; flex-wrap:wrap; gap:6px; }
+.abonos-badge { display:inline-block; font-size:.72rem; border:1px solid var(--border-color); border-radius:20px; padding:3px 8px; margin-top:7px; }
+.abonos-detail { padding:0 16px 16px; border-top:1px solid var(--border-color); }
+.abonos-detail h4 { margin:16px 0 8px; }
+.abonos-detail table { min-width:0; font-size:.82rem; }
+.abonos-detail td { overflow-wrap:anywhere; }
+#abonos-panel { position:sticky; top:16px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:16px; max-height:calc(100dvh - 40px); overflow-y:auto; box-sizing:border-box; }
+#abonos-panel small { color:var(--text-secondary); font-size:.78rem; }
+#abonos-selected { margin:14px 0; }
+.abonos-selected-row { align-items:flex-start; border-bottom:1px solid var(--border-color); padding:12px 0; font-size:.85rem; }
+.abonos-selected-row strong { display:block; margin-bottom:5px; }
+.abonos-empty { padding:20px 8px; color:var(--text-secondary); font-size:.9rem; }
+#abonos-mobile-selection, #abonos-panel-close { display:none; }
+.abonos-combo { position:relative; min-width:0; }
+#view-seguimiento-abonos .abonos-combo input { padding-right:30px; }
+#view-seguimiento-abonos .abonos-clear { position:absolute; right:3px; bottom:4px; border:0; padding:5px 8px; }
+.abonos-options { position:absolute; top:100%; left:0; right:0; z-index:30; max-height:280px; overflow-y:auto; background:var(--card-bg); color:var(--text-primary); border:1px solid var(--border-color); border-radius:8px; box-shadow:0 6px 18px #0003; }
+.abonos-options [role=option], .abonos-options small { display:block; padding:10px; font-size:.85rem; overflow-wrap:anywhere; }
+.abonos-options [role=option] { cursor:pointer; }
+.abonos-options [aria-selected=true], .abonos-options [role=option]:hover { background:var(--accent,#2563eb); color:white; }
+@media(max-width:1099px) {
+ #view-seguimiento-abonos #abonos-form { grid-template-columns:1fr 1fr; }
+ .abonos-layout { grid-template-columns:minmax(0,1fr); }
+ #abonos-mobile-selection { display:block; margin:12px 0; }
+ #abonos-panel { display:none; }
+ #abonos-panel.is-open { display:block; position:fixed; z-index:10002; top:0; right:0; bottom:0; width:min(420px,100%); max-height:100dvh; border-radius:0; }
+ #abonos-panel-close { display:block; }
+ #abonos-backdrop:not([hidden]) { position:fixed; inset:0; background:#0008; z-index:10001; }
+ body.abonos-panel-open { overflow:hidden; }
+}
+@media(max-width:600px) {
+ #view-seguimiento-abonos #abonos-form { grid-template-columns:minmax(0,1fr); }
+ .abonos-row { align-items:flex-start; }
+ .abonos-row-actions, .abonos-amounts { width:100%; }
+ .abonos-toolbar { flex-wrap:wrap; }
+ .abonos-detail table, .abonos-detail tbody, .abonos-detail tr, .abonos-detail td { display:block; width:auto; min-width:0; }
+ .abonos-detail thead { display:none; }
+ .abonos-detail tr { padding:8px; border:1px solid var(--border-color); border-radius:6px; margin:8px 0; }
+ .abonos-detail td { border:0; padding:4px; }
+ .abonos-detail td::before { content:attr(data-label) ': '; font-weight:600; }
+}
+
+/* Etiquetas, foco y estados del seguimiento bancario. */
+#view-seguimiento-abonos #abonos-form { align-items:start; grid-template-columns:150px 150px minmax(250px,1fr) minmax(190px,.8fr) auto; }
+#view-seguimiento-abonos #abonos-form label { margin:0; line-height:1.4; font-size:.75rem; }
+#view-seguimiento-abonos #abonos-form .filter-mini { gap:7px; min-width:0; }
+#view-seguimiento-abonos input { height:44px; box-shadow:none; }
+#view-seguimiento-abonos button { min-height:44px; }
+#view-seguimiento-abonos #abonos-form > button { margin-top:24px; }
+#view-seguimiento-abonos input:focus, #view-seguimiento-abonos input:focus-visible { outline:1px solid var(--accent,#315b88); outline-offset:1px; box-shadow:none; }
+.abonos-input-wrap { position:relative; }
+#view-seguimiento-abonos .abonos-combo input { padding-right:48px; }
+#view-seguimiento-abonos .abonos-clear { top:0; bottom:auto; right:0; width:44px; height:44px; padding:0; background:transparent; }
+.abonos-hint { font-size:.72rem; color:var(--text-secondary); }
+.abonos-options { top:calc(100% + 6px); max-height:min(280px,45dvh); }
+.abonos-options [role=option] { min-height:44px; box-sizing:border-box; }
+.abonos-options [role=option] strong, .abonos-options [role=option] span { display:block; }
+.abonos-options [role=option] span { margin-top:4px; font-variant-numeric:tabular-nums; }
+.abonos-badge-ok { color:#166046; background:#eaf6ef; border-color:#bfdfce; }
+.abonos-badge-pending { color:#805b19; background:#fff5df; border-color:#ead6a6; }
+[data-theme="dark"] .abonos-badge-ok { color:#a8dfc4; background:#193b31; border-color:#35604e; }
+[data-theme="dark"] .abonos-badge-pending { color:#edcf91; background:#3c321f; border-color:#695534; }
+@media(max-width:1250px) { #view-seguimiento-abonos #abonos-form { grid-template-columns:minmax(0,1fr) minmax(0,1fr); } #view-seguimiento-abonos #abonos-form > button { margin-top:0; } }
+@media(max-width:600px) { #view-seguimiento-abonos #abonos-form { grid-template-columns:minmax(0,1fr); } }

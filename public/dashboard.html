@@ -158,6 +158,9 @@
                         <li onclick="showView('reportes-saldo-prov')" title="Saldo Proveedores" data-admin-only>
                             <i class="fas fa-file-invoice-dollar"></i> <span>Saldo Proveedores</span>
                         </li>
+                        <li onclick="showView('seguimiento-abonos')" title="Seguimiento Abonos Banco" data-admin-only>
+                            <i class="fas fa-money-check-alt"></i> <span>Seguimiento Abonos Banco</span>
+                        </li>
                         <!-- NUEVO REPORTE: CARGO CAJA RESULTADO -->
                         <li onclick="showView('cargo-caja-resultado')" data-module="reportes"
                             title="Cargo Caja Resultado">
@@ -583,6 +586,25 @@
                     <button onclick="cambiarPaginaCargos(-1)"><i class="fas fa-chevron-left"></i></button>
                     <span id="page-info-cargos">Pág 1</span>
                     <button onclick="cambiarPaginaCargos(1)"><i class="fas fa-chevron-right"></i></button>
+                </div>
+            </div>
+
+            <div id="view-seguimiento-abonos" class="view-section" style="display:none;">
+                <header><h1>Seguimiento Abonos Banco</h1></header>
+                <p>Consulte salidas y entradas de caja relacionadas por documento. La coincidencia no confirma por sí sola el destino.</p>
+                <form id="abonos-form" class="report-top-bar abonos-filters">
+                    <div class="filter-mini"><label for="abonos-inicio">DESDE (salida)</label><input id="abonos-inicio" type="date" required></div>
+                    <div class="filter-mini"><label for="abonos-fin">HASTA (salida)</label><input id="abonos-fin" type="date" required></div>
+                    <div class="filter-mini"><label for="abonos-cuenta">BANCO O CUENTA</label><input id="abonos-cuenta" maxlength="50" placeholder="Escriba banco o número de cuenta"></div>
+                    <div class="filter-mini"><label for="abonos-documento">DOCUMENTO</label><input id="abonos-documento" maxlength="20" placeholder="Escriba un documento"></div>
+                    <button type="submit" class="btn-primary">Consultar</button>
+                </form>
+                <p id="abonos-status" role="status" aria-live="polite">Seleccione las fechas para consultar.</p>
+                <button type="button" id="abonos-mobile-selection" onclick="abonosPanel(true)">Ver selección (0)</button>
+                <div class="abonos-layout">
+                    <div class="abonos-main"><div class="abonos-toolbar"><h2>Resultados</h2><button type="button" onclick="abonosSeleccionarResultados()">Agregar todos los resultados</button></div><div id="abonos-resultados"></div><nav id="abonos-pages" aria-label="Páginas de resultados"></nav></div>
+                    <div id="abonos-backdrop" hidden onclick="abonosPanel(false)"></div>
+                    <aside id="abonos-panel" aria-labelledby="abonos-panel-title"><div class="abonos-toolbar"><h2 id="abonos-panel-title">Mi reporte</h2><button type="button" id="abonos-panel-close" onclick="abonosPanel(false)">Cerrar</button></div><p id="abonos-selection-count"></p><div id="abonos-selected"></div><div id="abonos-selection-totals"></div><div class="abonos-actions"><button type="button" data-abonos-export onclick="abonosExportar('excel')">Excel</button><button type="button" data-abonos-export onclick="abonosExportar('pdf')">PDF</button><button type="button" onclick="abonosLimpiar()">Vaciar</button></div><small>Selección temporal: se pierde al recargar o cerrar sesión. Se incluyen las salidas seleccionadas y todas sus entradas relacionadas, actualizadas al exportar.</small></aside>
                 </div>
             </div>
 

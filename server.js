@@ -2799,5 +2799,92 @@ async function exportarComparativoBanco(req, res, format) {
 app.post('/api/reports/cargos-banco-comparativo/export/excel', isAuthenticated, (req, res) => exportarComparativoBanco(req, res, 'excel'));
 app.post('/api/reports/cargos-banco-comparativo/export/pdf', isAuthenticated, (req, res) => exportarComparativoBanco(req, res, 'pdf'));
 
+// Seguimiento de abonos: solo administradores pueden consultar datos bancarios.
+const seguimientoAbonos = require('./lib/seguimiento-abonos');
+async function cargarSeguimientoAbonos({ filtros, ids }) {
+    const pool = await getConnection();
+    if (!pool) throw new Error('No se pudo conectar a la base de datos');
+    const selected = ids ? seguimientoAbonos.validarIds(ids) : null;
+    const f = selected ? null : seguimientoAbonos.validarFiltros(filtros);
+    const request = pool.request();
+    let where;
+    if (selected) {
+        request.input('ids', sql.NVarChar(sql.MAX), JSON.stringify(selected));
+        where = 'cb.Numero IN (SELECT TRY_CONVERT(int, [value]) FROM OPENJSON(@ids))';
+    } else {
+        request.input('inicio', sql.Date, f.inicio).input('fin', sql.Date, f.fin)
+            .input('cuenta', sql.VarChar(50), f.cuenta).input('documento', sql.VarChar(20), f.documento)
+            .input('cuentaExacta', sql.VarChar(20), f.cuentaExacta || '').input('documentoExacto', sql.VarChar(20), f.documentoExacto || '');
+        where = `cb.Fecha >= @inicio AND cb.Fecha < DATEADD(day, 1, @fin)
+            AND ((@cuentaExacta <> '' AND LTRIM(RTRIM(cb.Cuenta)) = @cuentaExacta) OR (@cuentaExacta = '' AND (@cuenta = '' OR CHARINDEX(@cuenta, cb.Cuenta) > 0 OR CHARINDEX(@cuenta, b.Banco) > 0)))
+            AND ((@documentoExacto <> '' AND LTRIM(RTRIM(cb.Documento)) = @documentoExacto) OR (@documentoExacto = '' AND (@documento = '' OR CHARINDEX(@documento, cb.Documento) > 0)))`;
+    }
+    const result = await request.query(`
+        SELECT TOP (1001) cb.Numero, LTRIM(RTRIM(cb.Documento)) Documento, cb.Fecha,
+            LTRIM(RTRIM(cb.Cuenta)) Cuenta, LTRIM(RTRIM(b.Banco)) Banco, b.Moneda, LTRIM(RTRIM(mon.c_describe)) MonedaNombre,
+            cb.Monto, LTRIM(RTRIM(cb.Detalle)) Detalle
+        FROM dbo.CtaBanco cb JOIN dbo.Bancos b ON b.Cuenta = cb.Cuenta
+        OUTER APPLY (SELECT TOP (1) c_describe FROM dbo.Tablas WHERE n_codtabla = 4 AND n_numero = b.Moneda ORDER BY c_describe) mon
+        WHERE cb.Tipo = 1 AND cb.Clase = 4 AND ${where}
+        ORDER BY cb.Fecha DESC, cb.Numero DESC;
+        SELECT DISTINCT c.Numero, LTRIM(RTRIM(c.Documento)) Documento, c.Fecha, c.Cajero,
+            LTRIM(RTRIM(t.c_describe)) Sede, LTRIM(RTRIM(c.Empresa)) Empresa,
+            LTRIM(RTRIM(c.Destinatario)) Destinatario, c.Moneda, LTRIM(RTRIM(mon.c_describe)) MonedaNombre, c.Monto
+        FROM dbo.Caja c
+        OUTER APPLY (SELECT TOP (1) c_describe FROM dbo.Tablas WHERE n_codtabla = 4 AND n_numero = c.Moneda ORDER BY c_describe) mon
+        OUTER APPLY (SELECT TOP (1) c_describe FROM dbo.Tablas WHERE n_codtabla = 200 AND n_numero = c.Cajero ORDER BY c_describe) t
+        WHERE c.Tipo = 2 AND c.Razon = 3 AND ISNULL(c.Eliminado, 0) = 0
+          AND NULLIF(LTRIM(RTRIM(c.Documento)), '') IS NOT NULL
+          AND EXISTS (SELECT 1 FROM dbo.CtaBanco cb JOIN dbo.Bancos b ON b.Cuenta = cb.Cuenta
+              WHERE cb.Tipo = 1 AND cb.Clase = 4 AND ${where}
+              AND NULLIF(LTRIM(RTRIM(cb.Documento)), '') IS NOT NULL
+              AND LTRIM(RTRIM(cb.Documento)) = LTRIM(RTRIM(c.Documento)))
+        ORDER BY c.Fecha, c.Numero;`);
+    if (result.recordsets[0].length > 1000) throw Object.assign(new Error('Hay más de 1000 salidas; reduzca el rango o precise los filtros.'), { status: 400 });
+    if (selected && result.recordsets[0].length !== selected.length) throw Object.assign(new Error('Algunas salidas seleccionadas ya no están disponibles. Vuelva a consultar.'), { status: 400 });
+    return seguimientoAbonos.agrupar(result.recordsets[0], result.recordsets[1]);
+}
+function requiereAdminAbonos(req, res, next) {
+    if (!esAdministrador(usuarioActual(req))) return res.status(403).json({ message: 'Reporte disponible solo para Administrador' });
+    next();
+}
+app.post('/api/reports/seguimiento-abonos/sugerencias', isAuthenticated, requiereAdminAbonos, async (req, res) => {
+    try {
+        const { tipo, texto } = req.body || {};
+        const q = typeof texto === 'string' ? texto.trim() : '';
+        if (!['cuenta', 'documento'].includes(tipo) || q.length < 2 || q.length > 50) return res.status(400).json({ message: 'Búsqueda inválida' });
+        const f = seguimientoAbonos.validarFiltros(req.body.filtros);
+        const pool = await getConnection(); if (!pool) throw new Error('Sin conexión');
+        const request = pool.request().input('q', sql.VarChar(50), q);
+        let query;
+        if (tipo === 'cuenta') query = `SELECT TOP (16) LTRIM(RTRIM(Cuenta)) valor, LTRIM(RTRIM(Banco)) banco FROM dbo.Bancos WHERE CHARINDEX(@q, Cuenta) > 0 OR CHARINDEX(@q, Banco) > 0 ORDER BY Banco, Cuenta`;
+        else {
+            request.input('inicio', sql.Date, f.inicio).input('fin', sql.Date, f.fin).input('exacta', sql.VarChar(20), f.cuentaExacta || '').input('cuenta', sql.VarChar(50), f.cuenta);
+            query = `SELECT DISTINCT TOP (16) LTRIM(RTRIM(cb.Documento)) valor FROM dbo.CtaBanco cb JOIN dbo.Bancos b ON b.Cuenta = cb.Cuenta
+                WHERE cb.Tipo = 1 AND cb.Clase = 4 AND cb.Fecha >= @inicio AND cb.Fecha < DATEADD(day, 1, @fin)
+                AND CHARINDEX(@q, cb.Documento) > 0
+                AND ((@exacta <> '' AND LTRIM(RTRIM(cb.Cuenta)) = @exacta) OR (@exacta = '' AND (@cuenta = '' OR CHARINDEX(@cuenta, cb.Cuenta) > 0 OR CHARINDEX(@cuenta, b.Banco) > 0))) ORDER BY valor`;
+        }
+        const { recordset } = await request.query(query);
+        res.json({ opciones: recordset.slice(0, 15), hayMas: recordset.length > 15 });
+    } catch (error) { res.status(error.status || 500).json({ message: error.status ? error.message : 'No se pudieron cargar sugerencias' }); }
+});
+app.post('/api/reports/seguimiento-abonos', isAuthenticated, requiereAdminAbonos, async (req, res) => {
+    try { res.json({ grupos: await cargarSeguimientoAbonos({ filtros: req.body?.filtros }) }); }
+    catch (error) { console.error('Error seguimiento abonos:', error); res.status(error.status || 500).json({ message: error.status ? error.message : 'Error al consultar movimientos' }); }
+});
+app.post('/api/reports/seguimiento-abonos/export/:formato', isAuthenticated, requiereAdminAbonos, async (req, res) => {
+    const formato = req.params.formato;
+    if (!['excel', 'pdf'].includes(formato)) return res.status(400).json({ message: 'Formato no válido' });
+    try {
+        const grupos = await cargarSeguimientoAbonos({ ids: req.body?.ids });
+        const buffer = await seguimientoAbonos[formato](grupos);
+        const extension = formato === 'excel' ? 'xlsx' : 'pdf';
+        res.setHeader('Content-Type', formato === 'excel' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="seguimiento-abonos-banco.${extension}"`);
+        res.send(buffer);
+    } catch (error) { console.error('Error exportación abonos:', error); res.status(error.status || 500).json({ message: error.status ? error.message : 'Error al exportar movimientos' }); }
+});
+
 //-------FINAL
 app.listen(PORT, () => console.log(`Servidor en puerto ${PORT}`));

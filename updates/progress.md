@@ -915,6 +915,40 @@ en la carpeta `public/`.
 
 ---
 
+**06/11/2026** — Seguimiento Abonos Banco
+
+- Nuevo reporte exclusivo para administradores: consulta salidas de `CtaBanco` por fecha, banco/cuenta y documento; agrupa entradas activas de `Caja` por documento, sin limitar su fecha.
+- La sede se resuelve con `Caja.Cajero = Tablas.n_numero` y `n_codtabla = 200`; las entradas sin sede se conservan. Los documentos vacíos no se relacionan y los totales se separan por moneda.
+- Selección temporal de hasta 1000 salidas entre consultas y exportaciones Excel/PDF generadas desde datos consultados nuevamente. Cada búsqueda admite hasta 1000 salidas y solicita precisar filtros si excede el límite.
+- Pruebas locales de agrupación, validación y archivos; prueba HTTP integrada con Azure SQL: muestra del 31/10/2026, cinco salidas, tres entradas y tres sedes resueltas; ambos archivos generados y respuestas 403 para un usuario operador en consulta y exportaciones.
+- Vista comprobada en navegador con datos simulados: consulta, sede, selección y ancho móvil de 390 px. Pendiente: conciliación funcional de una muestra con el usuario. La coincidencia de documento es un indicio de relación, no una confirmación del destino.
+- Archivos: `server.js`, `lib/seguimiento-abonos.js`, `public/dashboard.html`, `public/script.js`, `public/style.css`, `test/seguimiento-abonos.test.js`.
+- Estado: ✅ implementación, revisión visual y prueba integrada / ⏳ conciliación funcional
+
+---
+
+**06/11/2026** — Rediseño de Seguimiento Abonos Banco
+
+- Filtros compactos aislados de la regla global de formularios; sugerencias con debounce de 300 ms, mínimo dos caracteres, teclado, cancelación y filtros exactos opcionales.
+- Resultados cerrados por documento, detalle desplegable y paginación local de 20 grupos. Selección por documento con unión de salidas por identificador entre consultas.
+- Panel Mi reporte de 340 px en escritorio y panel superpuesto bajo 1100 px, con resumen por moneda, sedes, eliminación y exportaciones bloqueadas mientras se generan.
+- Nuevo endpoint administrativo `/api/reports/seguimiento-abonos/sugerencias`; consultas parametrizadas y máximo 15 coincidencias. Las exportaciones mantienen su contrato basado en IDs.
+- Validación: 39 pruebas aprobadas, sintaxis y diff sin errores. Revisión en navegador con datos simulados de filtros compactos, agregado al panel y apertura/cierre de selección móvil a 390 px. Falta contrastar las sugerencias con Azure SQL y ampliar las pruebas visuales de estados y temas.
+- Estado: ✅ implementación / ⏳ validación integrada de sugerencias
+
+---
+
+**06/11/2026** — Buscador, estados y nombres de moneda
+
+- Etiquetas sin margen negativo, foco fino, campos de 44 px, placeholders orientativos y ayuda de dos caracteres. Sugerencias con banco y cuenta en líneas separadas; controles de limpieza con área táctil propia.
+- Estados Con entradas/Sin entrada en verde y ámbar suaves, con variantes oscuras y etiquetas textuales.
+- Monedas resueltas mediante Tablas(4) desde Bancos.Moneda y Caja.Moneda con OUTER APPLY de una fila, sin multiplicar ni excluir movimientos. API conserva códigos y añade MonedaNombre/monedaNombre; web, selección, Excel y PDF muestran nombres con fallback al código.
+- Validación: 40 pruebas aprobadas; sintaxis y diff correctos. Navegador con datos simulados: sugerencias y selección por teclado, Soles visible, 390/768/1024/1440 px sin desbordamiento horizontal medido y revisión de tema oscuro móvil.
+- Pendiente: contraste de la nueva lectura de catálogo con Azure SQL, revisión completa al 200 % y comprobación visual exhaustiva de exportaciones.
+- Estado: ✅ implementación y pruebas locales / ⏳ validaciones complementarias
+
+---
+
 ## 7. Próximos pasos
 
 1. Ejecutar `sql/setup_roles_empresa.sql` en Azure SQL y conservar su salida como evidencia de migración.
