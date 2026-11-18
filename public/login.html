@@ -5,6 +5,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Sedimcorp</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="brand/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="brand/favicon-192.png">
+    <link rel="apple-touch-icon" href="brand/apple-touch-icon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@400;600;700;800&display=swap">
     <link rel="stylesheet" href="style.css">
     <!-- Iconos -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -18,8 +24,13 @@
     </button>
 
     <div class="login-container">
-        <!-- AQUI ESTÁ TU LOGO -->
-        <img src="logo_croma.png" alt="Sedimcorp Logo" class="login-logo">
+        <!-- Logo Sedimcorp: la variante visible depende del tema (ver style.css) -->
+        <div class="login-logo" role="img" aria-label="Sedimcorp — Transformando ideas en soluciones">
+            <img src="brand/sedimcorp-isotipo.png" alt="" class="login-logo-mark logo-light">
+            <img src="brand/sedimcorp-isotipo-negativo.png" alt="" class="login-logo-mark logo-dark">
+            <span class="login-wordmark" aria-hidden="true">sedim<span class="brand-accent">corp</span></span>
+            <span class="login-tagline" aria-hidden="true">Transformando ideas en soluciones</span>
+        </div>
 
         <h2>Acceso al Sistema</h2>
 

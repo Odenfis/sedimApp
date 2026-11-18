@@ -2111,7 +2111,7 @@ function renderChartsCargo(porMes, matrix) {
         type: 'bar',
         data: {
             labels: MESES_CORTO,
-            datasets: [{ label: 'Monto por mes', data: porMes, backgroundColor: '#2563eb', borderRadius: 5, maxBarThickness: 44 }]
+            datasets: [{ label: 'Monto por mes', data: porMes, backgroundColor: '#2F5FC4', borderRadius: 5, maxBarThickness: 44 }]
         },
         options: {
             responsive: true, maintainAspectRatio: false,
@@ -2150,7 +2150,7 @@ function renderChartsCargo(porMes, matrix) {
     if (remainder.length) entries.push({ label: 'Otros', total: remainder.reduce((sum, row) => sum + row.total, 0) });
     document.getElementById('cc-types-description').textContent = negative ? 'Importes por categoría · Incluye ajustes negativos' : 'Top 8 + Otros · Participación del total';
     document.getElementById('cc-legend-hint').hidden = entries.length <= 4;
-    const palette = ['#2563eb', '#047857', '#b45309', '#dc2626', '#7c3aed', '#0e7490', '#be185d', '#4d7c0f', '#64748b'];
+    const palette = ['#2F5FC4', '#047857', '#b45309', '#dc2626', '#7c3aed', '#0e7490', '#be185d', '#4d7c0f', '#64748b'];
     const percent = value => (value / total * 100).toLocaleString('es-PE', { maximumFractionDigits: 1 }) + '%';
     document.getElementById('cc-types-legend').innerHTML = entries.map((row, index) =>
         `<li><span class="cc-legend-dot" style="background:${palette[index % palette.length]}"></span><span class="cc-legend-name">${escapeHtmlCfg(row.label)}</span><span class="cc-legend-value">${fmtMoneda(row.total)}${!negative && total > 0 ? `<small>${percent(row.total)}</small>` : ''}</span></li>`
@@ -2507,7 +2507,7 @@ function renderChartsVentas(data, diario) {
     const dataBarras = [...data].sort((a, b) => (parseFloat(b.Soles) || 0) - (parseFloat(a.Soles) || 0));
     const labels = dataBarras.map(r => r.tDeposito);
     const valores = dataBarras.map(r => parseFloat(r.Soles) || 0);
-    const paleta = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#f97316'];
+    const paleta = ['#2F5FC4', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#f97316'];
 
     const numTipos = labels.length;
     const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim() || '#1f2937';
@@ -2637,12 +2637,12 @@ function renderChartsVentas(data, diario) {
                 datasets: [{
                     label: 'Total diario',
                     data: evoData,
-                    borderColor: '#2563eb',
-                    backgroundColor: 'rgba(37,99,235,0.1)',
+                    borderColor: '#2F5FC4',
+                    backgroundColor: 'rgba(47,95,196,0.1)',
                     fill: true,
                     tension: 0.3,
                     pointRadius: 4,
-                    pointBackgroundColor: '#2563eb'
+                    pointBackgroundColor: '#2F5FC4'
                 }]
             },
         options: {
@@ -2827,7 +2827,7 @@ function cbDestroyCharts() {
 }
 
 const cbLocalCharts = { reasonPage: 0, typesPage: 0 };
-const cbPalette = ['#2563eb', '#10b981'];
+const cbPalette = ['#2F5FC4', '#10b981'];
 new MutationObserver(() => {
     const colors = cbChartColors();
     [cbChartComparison, cbChartEvolution, cbChartStatus, cbChartTypes].forEach(chart => {
@@ -2978,7 +2978,7 @@ function cbRenderEvolution() {
 }
 function cbRenderStatus() {
     const states = cbLastReport.kpis.estados;
-    const items = [['Ambos lados', states.AMBOS, '#10b981'], ['Solo banco', states.SOLO_BANCO, '#f59e0b'], ['Solo efectivo', states.SOLO_EFECTIVO, '#2563eb']].filter(item => item[1] > 0);
+    const items = [['Ambos lados', states.AMBOS, '#10b981'], ['Solo banco', states.SOLO_BANCO, '#f59e0b'], ['Solo efectivo', states.SOLO_EFECTIVO, '#2F5FC4']].filter(item => item[1] > 0);
     const total = items.reduce((sum, item) => sum + item[1], 0);
     cbChartMessage('status', total ? '' : 'Sin datos');
     const legend = document.getElementById('cb-status-legend');

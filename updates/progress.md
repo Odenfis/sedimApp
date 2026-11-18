@@ -945,7 +945,42 @@ en la carpeta `public/`.
 - Monedas resueltas mediante Tablas(4) desde Bancos.Moneda y Caja.Moneda con OUTER APPLY de una fila, sin multiplicar ni excluir movimientos. API conserva códigos y añade MonedaNombre/monedaNombre; web, selección, Excel y PDF muestran nombres con fallback al código.
 - Validación: 40 pruebas aprobadas; sintaxis y diff correctos. Navegador con datos simulados: sugerencias y selección por teclado, Soles visible, 390/768/1024/1440 px sin desbordamiento horizontal medido y revisión de tema oscuro móvil.
 - Pendiente: contraste de la nueva lectura de catálogo con Azure SQL, revisión completa al 200 % y comprobación visual exhaustiva de exportaciones.
-- Estado: ✅ implementación y pruebas locales / ⏳ validaciones complementarias
+- Conformidad del usuario (06/11/2026): diseño aprobado tras los ajustes del buscador, estados y nombres de moneda. Se da por cerrado el ajuste visual solicitado; esta aprobación no sustituye las verificaciones técnicas pendientes.
+- Estado: ✅ implementación, pruebas locales y diseño aprobado por el usuario / ⏳ validaciones complementarias
+
+---
+
+**17/11/2026** — Nueva identidad visual Sedimcorp (logo + paleta)
+
+- Paleta de marca aplicada mediante los tokens existentes de `style.css` (sin renombrar variables):
+  Azul noche `#1F2D4F` (texto), Azul código `#2F5FC4` (`--accent`), Turquesa `#3DDCC8`,
+  Degradado S `#3DDCC8 → #3F6FD8` y Gris niebla `#F4F6FA` (fondo). Nuevos tokens
+  `--brand-navy/blue/turquoise/gradient`, `--brand-wordmark-accent`, `--sidebar-active-bar`,
+  `--font-heading` y `--font-body`.
+- Modo oscuro con base azul noche (`#141D33` fondo, `#1F2D4F` tarjetas, `#18233F` sidebar).
+  `--accent` oscuro `#5585E8`, equivalente en contraste al anterior `#3b82f6` (sin regresión);
+  barra del ítem activo en turquesa.
+- Tipografía: Google Fonts Sora (títulos h1–h3 y marca) + Inter (texto, antes declarada pero no cargada).
+- Login: logo vertical con variante clara/negativa según `data-theme` (solo CSS), sin el recuadro
+  gris anterior; tarjeta con franja superior en degradado y halo sutil de fondo.
+- Sidebar: isotipo + wordmark "sedim**corp**" ("corp" azul código / turquesa en oscuro).
+  Modo colapsado sin cambios.
+- Favicon y apple-touch-icon en ambas páginas. Azul primario de las gráficas `#2563eb → #2F5FC4`;
+  colores de estado y series categóricas se mantienen.
+- Archivos de marca en `public/brand/` (PNG transparentes): `sedimcorp-isotipo.png`,
+  `sedimcorp-isotipo-negativo.png`, `favicon-32.png`, `favicon-192.png`, `apple-touch-icon.png`.
+  Se extrajeron de las láminas de identidad (`Logotipo horizontal — claro y oscuro@2x.png` y
+  `Versiones, tamaños y paleta@2x.png`), que tienen fondo sólido: recorte + eliminación del fondo
+  con desmezcla de alfa en bordes. El wordmark y el lema del login se renderizan como texto HTML
+  en Sora/Inter (nítidos y adaptables al tema). Si llegan los SVG oficiales, basta reemplazar los PNG.
+- Verificación: 40/40 pruebas, `node --check` y `git diff --check` correctos. Chrome headless (CDP)
+  con logos provisionales y API simulada: login 320/390 px y dashboard 390/1024/1440 px en ambos
+  temas, sin desbordamiento horizontal; subtítulo de marca en una línea.
+- Sin cambios en IDs, eventos, lógica JS, endpoints ni exportaciones. `logo.png` y `logo_croma.png`
+  quedan sin referencias (eliminar tras la conformidad visual).
+- Archivos: `public/style.css`, `public/login.html`, `public/dashboard.html`, `public/script.js`,
+  `public/brand/*`, `updates/progress.md`.
+- Estado: ✅ implementación y archivos de marca / ⏳ conformidad visual del usuario
 
 ---
 
