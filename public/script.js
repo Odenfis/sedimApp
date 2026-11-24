@@ -106,6 +106,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         else {
             const data = await res.json();
             const user = data.user;
+            try { mostrarUsuarioSidebar(user); } catch (errUsuario) { console.warn('No se pudo mostrar el usuario en el sidebar', errUsuario); }
             aplicarPermisos(user.permisos, user.rol);
             aplicarAlcanceEmpresas(user.empresas || []);
             if (user.permisos.includes('equipos')) fetchData();
@@ -2304,6 +2305,27 @@ async function exportarCargoResultado() {
     } finally {
         btn.innerHTML = original;
     }
+}
+
+// ==========================================
+//  USUARIO EN SESIÓN (sidebar, solo visual)
+// ==========================================
+
+function mostrarUsuarioSidebar(user) {
+    const cont = document.getElementById('sidebar-user');
+    if (!cont || !user) return;
+    const nombre = String(user.nombre || '').trim() || String(user.usuario || '').trim();
+    if (!nombre) return;
+    const rolTexto = String(user.rol || '').trim().toLowerCase();
+    const rol = rolTexto ? rolTexto.charAt(0).toUpperCase() + rolTexto.slice(1) : '';
+    const iniciales = nombre.split(/\s+/).filter(Boolean).slice(0, 2)
+        .map(p => p.charAt(0).toUpperCase()).join('');
+
+    document.getElementById('sidebar-user-avatar').textContent = iniciales;
+    document.getElementById('sidebar-user-name').textContent = nombre;
+    document.getElementById('sidebar-user-role').textContent = rol;
+    cont.title = rol ? `${nombre} · ${rol}` : nombre;
+    cont.hidden = false;
 }
 
 // ==========================================

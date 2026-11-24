@@ -1173,6 +1173,66 @@ button {
     color: var(--red-status) !important;
 }
 
+/* --- Usuario en sesión (sobre "Cerrar Sesión") --- */
+.sidebar-user {
+    display: flex;
+    align-items: center;
+    gap: var(--sb-gap, 12px);
+    padding: 8px var(--sb-pad-x, 13px);
+    margin-bottom: 6px;
+    border-radius: 8px;
+    background: var(--sidebar-active);
+    box-sizing: border-box;
+    min-width: 0;
+}
+
+.sidebar-user[hidden] { display: none; }
+
+.sidebar-user-avatar {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--brand-gradient, var(--accent));
+    color: #fff;
+    font-family: var(--font-heading, inherit);
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.sidebar-user-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.25;
+}
+
+.sidebar-user-name {
+    color: var(--sidebar-text);
+    font-size: 0.9rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sidebar-user-role {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+}
+
+.sidebar.collapsed .sidebar-user {
+    justify-content: center;
+    padding: 6px 0;
+    background: transparent;
+}
+
+.sidebar.collapsed .sidebar-user-info { display: none; }
+
 .sidebar-flyout {
     display: none;
     position: fixed;

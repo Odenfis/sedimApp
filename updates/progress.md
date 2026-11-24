@@ -952,35 +952,75 @@ en la carpeta `public/`.
 
 **17/11/2026** — Nueva identidad visual Sedimcorp (logo + paleta)
 
-- Paleta de marca aplicada mediante los tokens existentes de `style.css` (sin renombrar variables):
-  Azul noche `#1F2D4F` (texto), Azul código `#2F5FC4` (`--accent`), Turquesa `#3DDCC8`,
-  Degradado S `#3DDCC8 → #3F6FD8` y Gris niebla `#F4F6FA` (fondo). Nuevos tokens
-  `--brand-navy/blue/turquoise/gradient`, `--brand-wordmark-accent`, `--sidebar-active-bar`,
-  `--font-heading` y `--font-body`.
-- Modo oscuro con base azul noche (`#141D33` fondo, `#1F2D4F` tarjetas, `#18233F` sidebar).
-  `--accent` oscuro `#5585E8`, equivalente en contraste al anterior `#3b82f6` (sin regresión);
-  barra del ítem activo en turquesa.
-- Tipografía: Google Fonts Sora (títulos h1–h3 y marca) + Inter (texto, antes declarada pero no cargada).
-- Login: logo vertical con variante clara/negativa según `data-theme` (solo CSS), sin el recuadro
-  gris anterior; tarjeta con franja superior en degradado y halo sutil de fondo.
-- Sidebar: isotipo + wordmark "sedim**corp**" ("corp" azul código / turquesa en oscuro).
-  Modo colapsado sin cambios.
-- Favicon y apple-touch-icon en ambas páginas. Azul primario de las gráficas `#2563eb → #2F5FC4`;
-  colores de estado y series categóricas se mantienen.
-- Archivos de marca en `public/brand/` (PNG transparentes): `sedimcorp-isotipo.png`,
-  `sedimcorp-isotipo-negativo.png`, `favicon-32.png`, `favicon-192.png`, `apple-touch-icon.png`.
-  Se extrajeron de las láminas de identidad (`Logotipo horizontal — claro y oscuro@2x.png` y
-  `Versiones, tamaños y paleta@2x.png`), que tienen fondo sólido: recorte + eliminación del fondo
-  con desmezcla de alfa en bordes. El wordmark y el lema del login se renderizan como texto HTML
-  en Sora/Inter (nítidos y adaptables al tema). Si llegan los SVG oficiales, basta reemplazar los PNG.
-- Verificación: 40/40 pruebas, `node --check` y `git diff --check` correctos. Chrome headless (CDP)
-  con logos provisionales y API simulada: login 320/390 px y dashboard 390/1024/1440 px en ambos
-  temas, sin desbordamiento horizontal; subtítulo de marca en una línea.
-- Sin cambios en IDs, eventos, lógica JS, endpoints ni exportaciones. `logo.png` y `logo_croma.png`
-  quedan sin referencias (eliminar tras la conformidad visual).
-- Archivos: `public/style.css`, `public/login.html`, `public/dashboard.html`, `public/script.js`,
-  `public/brand/*`, `updates/progress.md`.
-- Estado: ✅ implementación y archivos de marca / ⏳ conformidad visual del usuario
+- **Objetivo**: renovar la cara de la web con el nuevo logo e identidad de Sedimcorp (paleta,
+  tipografía e isotipo), solo a nivel de diseño, sin afectar la funcionalidad ni el responsive
+  existente (breakpoints 1200/992/768/480, drawer móvil y sidebar colapsado).
+- **Identidad de referencia**: Azul noche `#1F2D4F`, Azul código `#2F5FC4`, Turquesa `#3DDCC8`,
+  Degradado S `#3DDCC8 → #3F6FD8`, Gris niebla `#F4F6FA`; Sora para logotipo y títulos, Inter
+  para textos.
+- **Paleta (`public/style.css`)**: se redefinieron los tokens existentes de `:root` y
+  `[data-theme="dark"]` sin renombrarlos, por lo que todos los módulos (incluidos los estilos
+  inline que usan `var(--accent)`) heredan la marca automáticamente. Nuevos tokens:
+  `--brand-navy`, `--brand-blue`, `--brand-turquoise`, `--brand-gradient`,
+  `--brand-wordmark-accent`, `--sidebar-active-bar`, `--font-heading` y `--font-body`.
+  - Claro: fondo gris niebla, texto azul noche, acento azul código (`#2F5FC4`, contraste 5.9:1
+    con texto blanco), bordes y sombras con tinte azul noche.
+  - Oscuro (base azul noche): fondo `#141D33`, tarjetas `#1F2D4F`, sidebar `#18233F`.
+    `--accent` `#5585E8`, elegido por quedar equivalente en contraste al anterior `#3b82f6`
+    (sin regresión de legibilidad en botones ni en texto); barra del ítem activo en turquesa.
+  - Colores de estado (verde/rojo/ámbar/morado) y series categóricas de gráficas se mantienen.
+- **Tipografía**: Google Fonts Sora (400/600/700/800) para h1–h3 y la marca, e Inter
+  (400–700) para el texto; Inter estaba declarada pero nunca se cargaba.
+- **Login (`public/login.html`)**: se reemplazó `logo_croma.png` (logo antiguo en blanco con
+  recuadro gris) por el isotipo en variante clara/negativa según `data-theme` (solo CSS, sin JS
+  nuevo; `toggleTheme()` intacto) + wordmark "sedim**corp**" y lema "Transformando ideas en
+  soluciones" como texto HTML en Sora/Inter ("corp" azul código en claro / turquesa en oscuro).
+  Tarjeta con franja superior en el degradado de marca, radio 16px y halo sutil de fondo;
+  botón Ingresar con hover y foco visible. Tamaños reducidos en ≤480px.
+- **Sidebar (`public/dashboard.html`)**: isotipo de 28px + wordmark "sedim**corp**" y
+  subtítulo "Panel de administración" en una sola línea. Modo colapsado sin cambios.
+- **Gráficas (`public/script.js`)**: solo se reemplazó el azul primario `#2563eb → #2F5FC4`
+  (y su relleno `rgba`) en las configuraciones de Chart.js; ninguna lógica modificada.
+- **Favicon**: `favicon-32.png`, `favicon-192.png` y `apple-touch-icon.png` en ambas páginas
+  (la "S" con degradado sobre azul noche, versión "tamaños pequeños").
+- **Fix logo roto en el login**: tras la primera implementación el login mostraba la imagen
+  rota (solo el texto `alt`) porque `public/brand/` no existía. Los archivos disponibles
+  (`Logotipo horizontal — claro y oscuro@2x.png`, `Logotipo principal (vertical)@2x.png`,
+  `Versiones, tamaños y paleta@2x.png`) eran láminas de presentación con fondo sólido. Solución:
+  - Isotipo claro y negativo recortados de la lámina horizontal (276×300 px) y fondo eliminado
+    con desmezcla de alfa en bordes (sin halo), script con `pureimage` del proyecto.
+  - Wordmark y lema pasaron a texto HTML (nítidos a cualquier tamaño y adaptables al tema).
+  - Favicons generados desde la versión "tamaños pequeños"; el ícono de app con llaves blancas
+    se descartó para `apple-touch-icon` porque el fondo blanco borraba las llaves.
+  - Si se reciben los SVG oficiales, basta con reemplazar los PNG de `public/brand/`.
+- **Verificación**: 40/40 pruebas (`npm test`), `node --check public/script.js` y
+  `git diff --check` correctos. Chrome headless vía CDP con los archivos reales y API simulada:
+  login 320/390/1280 px y dashboard 390/1024/1440 px en ambos temas, drawer móvil y
+  Estadística de Venta; sin desbordamiento horizontal (`scrollWidth == clientWidth`), logo
+  correcto según tema y subtítulo de marca en una línea.
+- Sin cambios en IDs, eventos, lógica JS, endpoints, SP ni exportaciones Excel/PDF.
+- `public/logo.png` y `public/logo_croma.png` quedan sin referencias en el código.
+- Conformidad del usuario (17/11/2026): resultado visual aprobado ("quedó perfecto").
+- Archivos: `public/style.css`, `public/login.html`, `public/dashboard.html`,
+  `public/script.js`, `public/brand/` (nuevo), `updates/progress.md`.
+- Estado: ✅ implementación, verificación y diseño aprobado por el usuario
+
+---
+
+**24/11/2026** — Usuario en sesión sobre "Cerrar Sesión" (solo visual)
+
+- En el pie del sidebar, encima de "Cerrar Sesión", se muestra una tarjeta con avatar de
+  iniciales (degradado de marca), **nombre completo** (`usuariosweb.nombre`, con
+  fallback a `usuario`) y rol. Nombres largos se recortan con elipsis; el tooltip muestra
+  el nombre completo y el rol. En sidebar colapsado solo se ve el avatar.
+- Sin cambios de backend: el dato ya venía en la sesión (`GET /api/session`).
+- `mostrarUsuarioSidebar(user)` en `script.js` usa `textContent` (sin XSS) y va en su
+  propio `try/catch` para no afectar el flujo de sesión. El bloque inicia `hidden`.
+- Verificación: 40/40 pruebas, `node --check` y `git diff --check` correctos; captura
+  Chrome headless 1440 px con sesión simulada.
+- Archivos: `public/dashboard.html`, `public/script.js`, `public/style.css`,
+  `updates/progress.md`.
+- Estado: ✅
 
 ---
 
