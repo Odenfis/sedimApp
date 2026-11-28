@@ -133,6 +133,7 @@ en la carpeta `public/`.
 | **Actualizar Sistema ERP Nube (Herramientas)** | `GET /api/herramientas/actualizar-erp` | ✅ Implementado |
 | **Configurador de Actualizaciones (Admin)** | `GET/POST /api/admin/config-actualizaciones`, generación dinámica del .bat en `/api/herramientas/actualizar-erp` | ✅ Implementado |
 | **Reportes — Estadística de Venta** | `GET /api/reports/ventas-estadistica`, `GET /api/reports/ventas-estadistica/rango`, `POST /api/reports/ventas-estadistica/export/excel`, `POST /api/reports/ventas-estadistica/export/pdf` | ✅ Implementado con alcance por empresa |
+| **Reportes — Ventas por Tipo de Mesa** | `POST /api/reports/ventas-mesas`, `/detalle`, `/export/excel`, `/export/pdf` | ✅ Implementado con alcance por empresa |
 
 ---
 
@@ -1024,6 +1025,81 @@ en la carpeta `public/`.
 
 ---
 
+**27/11/2026** — Nuevo reporte "Ventas por Tipo de Mesa" (Reportes)
+
+- **Objetivo**: comparar las ventas (tickets cancelados, `Ticket_c.Estado = 4`) por tipo
+  de mesa, filtrando por empresa, rango de fechas y turno, y ver los tickets que forman
+  cada grupo con la suma de `Total`.
+- **Reglas** (fuente única en `lib/ventas-mesas-report.js`):
+  - Prefijo por empresa: Cocineria `T001-`, Mar Picante 1 `T002-`, Inversiones Abruzzo Sac
+    `T005-`, igual que Revisión Nube. `T004-` existe en `Ticket_c`, pero el usuario
+    confirmó `T005` para Abruzzo.
+  - Turno: 1 = Mañana y 2 = Tarde-Noche; en Cocineria es al revés. 0 = ambos.
+  - Grupos excluyentes, de modo que la suma de los grupos es el total general:
+    - Atención normal: mesas 1–80 y 121–200
+    - Desayunos: 81–120
+    - Delivery: 201–209
+    - Para llevar: 210–219
+    - PedidosYa: 220–230 con Mozo 195
+    - Rappi: 220–230 con Mozo 203
+    - Otros apps: 220–230 con otro mozo
+    - Descarte y obsequios: 231–235
+    - Varios: 236–320
+    - Sin clasificar: el resto. Solo aparece si tiene datos.
+  - "Subtotal Apps" = PedidosYa + Rappi + Otros apps.
+- **Backend**:
+  - La consulta agrupa por `NroMesa`/`Mozo`/día y la clasificación se hace en JS.
+    `whereGrupo()` genera el SQL equivalente para el detalle y las exportaciones.
+  - "Comparar con periodo anterior" consulta el periodo inmediatamente anterior de la
+    misma duración.
+  - El detalle devuelve hasta 5000 tickets; los totales se calculan con una consulta
+    aparte y por eso siempre son exactos.
+  - Se reutilizan `validarVentasFiltros` (≤ 366 días), `exigirEmpresa(...,'nombre_ventas')`
+    y el permiso `reportes`.
+- **Vista**:
+  - Filtros y 4 KPIs: total, tickets, ticket promedio y grupo líder.
+  - Chips de agrupación como en el POS.
+  - Gráfica de columnas por grupo, con el periodo anterior opcional y un interruptor
+    "Sin Atención normal" para ampliar la escala de los grupos pequeños.
+  - Evolución en barras apiladas: diaria, semanal o mensual según el rango (45/180 días).
+  - Tabla resumen con barra de porcentaje y variación.
+  - Al pulsar una columna, chip o fila se abre debajo el desglose del grupo:
+    - resumen del grupo;
+    - Top 15 mesas, donde pulsar una barra filtra los tickets por mesa;
+    - tabla de tickets con búsqueda, páginas de 50 y la suma al pie. En móvil se
+      muestra como fichas.
+- **Exportación**: tanto Excel como PDF respetan el chip seleccionado.
+  - **Excel**: hojas Resumen (fórmulas y gráfica), Evolución y Tickets. Tickets tiene un
+    autofiltro y `SUBTOTAL(109)` al pie, hasta 50 000 filas.
+  - **PDF**: A4 horizontal con KPIs, gráfica, resumen y la lista de tickets si son
+    ≤ 1500.
+- **Cambios mínimos en otros archivos**: `lib/ventas-estadistica-report.js` exporta
+  `chartHelpers` y `lib/cargos-banco-comparativo-report.js` exporta `evolutionBucket`.
+  No cambia su comportamiento.
+- **Verificación**:
+  - `npm test`: 51/51, incluidas 11 pruebas nuevas.
+  - `node --check` y `git diff --check` sin errores.
+  - Conciliación contra Azure SQL (solo lectura):
+    - Cocineria 08/09/2021: S/ 2,785.50 y 30 tickets, igual a `SUM(Total)` directo.
+    - 01–26/11/2026, las tres empresas: el total de cada grupo coincide con la consulta
+      de detalle, y Turno 1 + Turno 2 = Ambos.
+  - HTTP con sesión simulada de Supervisor (Cocineria y Mar Picante):
+    - Abruzzo → 403;
+    - grupo inválido → 400;
+    - Excel y PDF generados.
+  - Chrome headless a 1440, 1024 (oscuro) y 390 px: sin desbordamiento horizontal y sin
+    errores de consola.
+- **Observación de datos**: en 220–230, Mar Picante y Abruzzo no usan los mozos 195/203,
+  así que sus ventas en esas mesas aparecen en "Otros apps" (Mar Picante, 01–26/11/2026:
+  52 tickets, S/ 5,174).
+- Archivos: `lib/ventas-mesas-report.js` (nuevo), `test/ventas-mesas-report.test.js`
+  (nuevo), `server.js`, `public/dashboard.html`, `public/script.js`, `public/style.css`,
+  `lib/ventas-estadistica-report.js`, `lib/cargos-banco-comparativo-report.js`,
+  `updates/progress.md`.
+- Estado: ✅ implementación y validación local con datos reales / ⏳ conformidad del usuario
+
+---
+
 ## 7. Próximos pasos
 
 1. Ejecutar `sql/setup_roles_empresa.sql` en Azure SQL y conservar su salida como evidencia de migración.
@@ -1047,7 +1123,7 @@ _(en blanco)_
   a Azure SQL; el backend lee de BD vía `/api/structure`.
 - La autenticación usa sesiones en memoria (no persistidas): reiniciar el servidor
   cierra todas las sesiones; considerar `connect-session-store` para producción.
-- Existe una suite `node:test` para Estadística de Venta y Comparativo Banco; aún no
+- Existe una suite `node:test` para Estadística de Venta, Comparativo Banco y Ventas por Tipo de Mesa; aún no
   hay cobertura general del resto del sistema ni linter configurado.
 - La migración de roles y empresas está preparada en `sql/`, pero no se ha ejecutado
   desde este entorno contra Azure SQL; los pasos de activación permanecen en la sección 7.

@@ -187,6 +187,10 @@
                             title="Comparativo Banco">
                             <i class="fas fa-scale-balanced"></i> <span>Comparativo Banco</span>
                         </li>
+                        <li onclick="showView('reporte-ventas-mesas')" data-module="reportes"
+                            title="Ventas por Tipo de Mesa">
+                            <i class="fas fa-chair"></i> <span>Ventas por Tipo de Mesa</span>
+                        </li>
                     </ul>
                         </li>
                     </ul>
@@ -1213,6 +1217,102 @@
                         <tfoot></tfoot>
                     </table>
                 </div>
+            </div>
+
+            <!-- VISTA: VENTAS POR TIPO DE MESA -->
+            <div id="view-reporte-ventas-mesas" class="view-section" style="display:none;">
+                <header><h1><i class="fas fa-chair"></i> Ventas por Tipo de Mesa</h1></header>
+                <div class="report-top-bar cb-top-bar vm-top-bar">
+                    <div class="cb-filter-grid vm-filter-grid">
+                        <div class="filter-mini"><label for="vm-empresa">EMPRESA</label>
+                            <select id="vm-empresa" onchange="vmActualizarTurnos()">
+                                <option value="Cocineria">Cocineria</option>
+                                <option value="Mar Picante 1">Mar Picante 1</option>
+                                <option value="Inversiones Abruzzo Sac">Inversiones Abruzzo Sac</option>
+                            </select>
+                        </div>
+                        <div class="filter-mini"><label for="vm-turno">TURNO</label>
+                            <select id="vm-turno"><option value="0">Ambos turnos</option><option value="1">Turno 1</option><option value="2">Turno 2</option></select>
+                        </div>
+                        <div class="filter-mini"><label for="vm-fecha-inicio">DESDE</label><input type="date" id="vm-fecha-inicio"></div>
+                        <div class="filter-mini"><label for="vm-fecha-fin">HASTA</label><input type="date" id="vm-fecha-fin"></div>
+                    </div>
+                    <div class="cb-actions vm-actions">
+                        <label class="vm-compare-toggle" title="Agrega el periodo inmediatamente anterior, de la misma duración">
+                            <input type="checkbox" id="vm-comparar"> <span>Comparar con periodo anterior</span>
+                        </label>
+                        <button class="btn-save" id="vm-btn-consultar" onclick="cargarVentasMesas()"><i class="fas fa-search"></i> Consultar</button>
+                        <button class="btn-save cb-excel" onclick="exportarVentasMesas('excel', this)"><i class="fas fa-file-excel"></i> Excel</button>
+                        <button class="btn-save cb-pdf" onclick="exportarVentasMesas('pdf', this)"><i class="fas fa-file-pdf"></i> PDF</button>
+                    </div>
+                </div>
+
+                <div class="cb-kpi-grid vm-kpi-grid">
+                    <article class="cb-kpi"><span>TOTAL VENDIDO</span><strong id="vm-kpi-total">S/ 0.00</strong><small id="vm-kpi-total-sub">Tickets cancelados (Estado 4)</small></article>
+                    <article class="cb-kpi vm-kpi-tickets"><span>TICKETS</span><strong id="vm-kpi-tickets">0</strong><small id="vm-kpi-tickets-sub">&nbsp;</small></article>
+                    <article class="cb-kpi vm-kpi-avg"><span>TICKET PROMEDIO</span><strong id="vm-kpi-promedio">S/ 0.00</strong><small>Total / tickets</small></article>
+                    <article class="cb-kpi vm-kpi-leader"><span>GRUPO LÍDER</span><strong id="vm-kpi-lider">—</strong><small id="vm-kpi-lider-sub">&nbsp;</small></article>
+                </div>
+
+                <div class="vm-chips card-simple" role="toolbar" aria-label="Agrupación por tipo de mesa">
+                    <span class="vm-chips-label">Agrupación:</span>
+                    <div id="vm-chips" class="vm-chip-list"></div>
+                </div>
+
+                <div class="vm-chart-grid">
+                    <section class="card-simple cb-chart-card">
+                        <div class="cb-chart-heading"><div><h3>Comparativo por tipo de mesa</h3><small id="vm-columns-sub">Pulse una columna para ver sus tickets</small></div><label class="vm-compare-toggle vm-zoom-toggle" title="Quita Atención normal de la gráfica para ampliar la escala de los demás grupos"><input type="checkbox" id="vm-sin-normal" onchange="vmRenderCharts()"> <span>Sin Atención normal</span></label></div>
+                        <div class="cb-chart-stage vm-columns-stage"><canvas id="vm-chart-columns" aria-label="Total vendido por tipo de mesa"></canvas><p class="cb-chart-message" id="vm-message-columns" role="status" hidden></p></div>
+                    </section>
+                    <section class="card-simple cb-chart-card">
+                        <div class="cb-chart-heading"><div><h3>Evolución por tipo de mesa</h3><small id="vm-evolution-sub"></small></div></div>
+                        <div class="cb-chart-stage vm-evolution-stage"><canvas id="vm-chart-evolution" aria-label="Evolución de ventas por tipo de mesa"></canvas><p class="cb-chart-message" id="vm-message-evolution" role="status" hidden></p></div>
+                    </section>
+                </div>
+
+                <div class="table-container report-table-container vm-table-wrap">
+                    <table id="vm-table" class="cb-table vm-table">
+                        <thead></thead>
+                        <tbody><tr><td colspan="6" class="empty-state-message">Seleccione filtros y presione Consultar</td></tr></tbody>
+                        <tfoot></tfoot>
+                    </table>
+                </div>
+
+                <section id="vm-detalle" class="card-simple vm-detail" aria-labelledby="vm-detalle-titulo" hidden>
+                    <header class="vm-detail-header">
+                        <div>
+                            <h3 id="vm-detalle-titulo">Tickets</h3>
+                            <p id="vm-detalle-contexto" class="vm-detail-context"></p>
+                        </div>
+                        <div class="vm-detail-stats">
+                            <div><span>Total</span><strong id="vm-detalle-total">—</strong></div>
+                            <div><span>Tickets</span><strong id="vm-detalle-count">—</strong></div>
+                            <div><span>Promedio</span><strong id="vm-detalle-promedio">—</strong></div>
+                            <div id="vm-detalle-var-wrap" hidden><span>Vs. anterior</span><strong id="vm-detalle-var">—</strong></div>
+                        </div>
+                    </header>
+                    <div class="vm-detail-grid">
+                        <div class="vm-detail-mesas" id="vm-detalle-mesas-wrap">
+                            <h4>Ventas por mesa <small>(pulse una barra para filtrar)</small></h4>
+                            <div class="cb-chart-stage vm-mesas-stage"><canvas id="vm-chart-mesas" aria-label="Ventas por mesa del grupo seleccionado"></canvas></div>
+                        </div>
+                        <div class="vm-detail-tickets">
+                            <div class="vm-detail-toolbar">
+                                <input type="search" id="vm-detalle-buscar" placeholder="Buscar ticket, mesa o mozo" aria-label="Buscar ticket, mesa o mozo" oninput="vmFiltrarTickets()">
+                                <span id="vm-detalle-mesa-chip" class="vm-mesa-filter" hidden></span>
+                            </div>
+                            <div id="vm-detalle-status" class="vm-detail-status" role="status" hidden></div>
+                            <div class="vm-detail-table-wrap" tabindex="0" aria-label="Tickets del grupo seleccionado">
+                                <table id="vm-detalle-tabla" class="vm-detail-table">
+                                    <thead><tr><th>Nro. ticket</th><th>Mesa</th><th>Mozo</th><th>Total</th><th>Flete</th><th>Propina</th><th>Fecha</th><th>Turno</th><th>Tipo de mesa</th></tr></thead>
+                                    <tbody></tbody>
+                                    <tfoot></tfoot>
+                                </table>
+                            </div>
+                            <div class="cb-chart-pager"><button id="vm-detalle-prev" type="button" onclick="vmCambiarPagina(-1)">Anterior</button><span id="vm-detalle-pagina" aria-live="polite"></span><button id="vm-detalle-next" type="button" onclick="vmCambiarPagina(1)">Siguiente</button></div>
+                        </div>
+                    </div>
+                </section>
             </div>
     </div>
 

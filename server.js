@@ -2663,6 +2663,157 @@ async function exportarEstadisticaVentas(req, res, formato) {
 app.post('/api/reports/ventas-estadistica/export/excel', isAuthenticated, (req, res) => exportarEstadisticaVentas(req, res, 'excel'));
 app.post('/api/reports/ventas-estadistica/export/pdf', isAuthenticated, (req, res) => exportarEstadisticaVentas(req, res, 'pdf'));
 
+// =========== REPORTE: VENTAS POR TIPO DE MESA ===========
+// Tickets pagados (Ticket_c.Estado = 4) agrupados por tipo de mesa. Las reglas de
+// prefijo y clasificación viven en lib/ventas-mesas-report.js.
+const ventasMesas = require('./lib/ventas-mesas-report');
+const VM_MAX_TICKETS_DETALLE = 5000;
+const VM_MAX_TICKETS_EXPORT = 50000;
+
+function vmFiltroBase(request, f) {
+    request
+        .input('prefijo', sql.VarChar(10), ventasMesas.prefijoTicket(f.empresa) + '%')
+        .input('turno', sql.Int, f.turno);
+    return "NroTicket LIKE @prefijo AND Estado = 4 AND (@turno = 0 OR Turno = @turno)";
+}
+
+async function vmConsultarAgregado(pool, f, fechaInicio, fechaFin) {
+    const request = pool.request();
+    const where = vmFiltroBase(request, f);
+    const result = await request
+        .input('inicio', sql.Date, new Date(`${fechaInicio}T00:00:00Z`))
+        .input('fin', sql.Date, new Date(`${fechaFin}T00:00:00Z`))
+        .query(`SELECT NroMesa AS mesa, Mozo AS mozo, CONVERT(char(10), Fecha, 23) AS dia,
+                       COUNT(*) AS tickets, SUM(Total) AS total
+                FROM Ticket_c
+                WHERE ${where} AND Fecha >= @inicio AND Fecha < DATEADD(day, 1, @fin)
+                GROUP BY NroMesa, Mozo, CONVERT(char(10), Fecha, 23)`);
+    return result.recordset;
+}
+
+async function obtenerVentasMesas(body, generadoPor) {
+    const f = validarVentasFiltros(body);
+    const pool = await getConnection();
+    if (!pool) throw new Error('No se pudo conectar a la base de datos');
+    const filas = await vmConsultarAgregado(pool, f, f.fechaInicio, f.fechaFin);
+    let anterior = null;
+    if (body.comparar === true || body.comparar === 'true') {
+        const rango = ventasMesas.periodoAnterior(f.fechaInicio, f.fechaFin);
+        anterior = { ...rango, filas: await vmConsultarAgregado(pool, f, rango.fechaInicio, rango.fechaFin) };
+    }
+    return { f, report: ventasMesas.buildMesasReport({ filas, filtros: f, anterior, generadoPor }) };
+}
+
+async function obtenerTicketsVentasMesas(f, seleccion, mesa, limite) {
+    const pool = await getConnection();
+    if (!pool) throw new Error('No se pudo conectar a la base de datos');
+    const filtroMesa = mesa === null ? '' : ' AND NroMesa = @mesa';
+    const bind = request => {
+        const where = vmFiltroBase(request, f);
+        request.input('inicio', sql.Date, f.inicio).input('fin', sql.Date, f.fin);
+        if (mesa !== null) request.input('mesa', sql.Int, mesa);
+        return `${where} AND Fecha >= @inicio AND Fecha < DATEADD(day, 1, @fin) AND ${ventasMesas.whereGrupo(seleccion)}${filtroMesa}`;
+    };
+    const detalleReq = pool.request();
+    const whereDetalle = bind(detalleReq);
+    const detalle = await detalleReq.input('limite', sql.Int, limite + 1).query(`
+        SELECT TOP (@limite) NroTicket, NroMesa, Mozo, Fecha, Turno, Flete, Propina, Total
+        FROM Ticket_c WHERE ${whereDetalle}
+        ORDER BY Fecha, NroTicket`);
+    const totalesReq = pool.request();
+    const whereTotales = bind(totalesReq);
+    const totales = await totalesReq.query(`
+        SELECT COUNT(*) AS tickets, ISNULL(SUM(Total), 0) AS total,
+               ISNULL(SUM(Flete), 0) AS flete, ISNULL(SUM(Propina), 0) AS propina
+        FROM Ticket_c WHERE ${whereTotales}`);
+    const rows = detalle.recordset;
+    const t = totales.recordset[0] || {};
+    return {
+        seleccion,
+        mesa,
+        truncado: rows.length > limite,
+        limite,
+        tickets: rows.slice(0, limite).map(ventasMesas.normalizarTicket),
+        totales: {
+            tickets: Number(t.tickets) || 0,
+            total: Math.round((Number(t.total) || 0) * 100) / 100,
+            flete: Math.round((Number(t.flete) || 0) * 100) / 100,
+            propina: Math.round((Number(t.propina) || 0) * 100) / 100
+        }
+    };
+}
+
+function vmMesaParam(value) {
+    if (value === undefined || value === null || value === '') return null;
+    const mesa = Number(value);
+    if (!Number.isInteger(mesa) || mesa < 0 || mesa > 100000) {
+        const error = new Error('Mesa no válida'); error.status = 400; throw error;
+    }
+    return mesa;
+}
+
+function vmError(res, error, contexto) {
+    console.error(contexto, error);
+    res.status(error.status || 500).json({ message: error.status ? error.message : 'Error generando el reporte de ventas por tipo de mesa' });
+}
+
+function vmAutorizar(req, res) {
+    if (!tienePermiso(req, 'reportes')) { res.status(403).json({ message: 'Sin permisos' }); return false; }
+    const { empresa } = req.body || {};
+    if (!empresa) { res.status(400).json({ message: 'Seleccione una empresa' }); return false; }
+    return Boolean(exigirEmpresa(req, res, empresa, 'nombre_ventas'));
+}
+
+app.post('/api/reports/ventas-mesas', isAuthenticated, async (req, res) => {
+    if (!vmAutorizar(req, res)) return;
+    try {
+        const { report } = await obtenerVentasMesas(req.body);
+        delete report.generadoPor;
+        res.json(report);
+    } catch (e) {
+        vmError(res, e, 'Error en ventas por tipo de mesa:');
+    }
+});
+
+app.post('/api/reports/ventas-mesas/detalle', isAuthenticated, async (req, res) => {
+    if (!vmAutorizar(req, res)) return;
+    try {
+        const f = validarVentasFiltros(req.body);
+        const seleccion = ventasMesas.validarSeleccion(req.body.grupo);
+        const mesa = vmMesaParam(req.body.mesa);
+        res.json(await obtenerTicketsVentasMesas(f, seleccion, mesa, VM_MAX_TICKETS_DETALLE));
+    } catch (e) {
+        vmError(res, e, 'Error en detalle de ventas por tipo de mesa:');
+    }
+});
+
+async function exportarVentasMesas(req, res, formato) {
+    if (!vmAutorizar(req, res)) return;
+    try {
+        const user = usuarioActual(req);
+        const { f, report } = await obtenerVentasMesas(req.body, user.nombre || user.usuario);
+        const seleccion = ventasMesas.validarSeleccion(req.body.grupo);
+        const isExcel = formato === 'excel';
+        const limite = isExcel ? VM_MAX_TICKETS_EXPORT : ventasMesas.PDF_MAX_TICKETS;
+        const detalle = await obtenerTicketsVentasMesas(f, seleccion, null, limite);
+        const charts = await ventasMesas.createCharts(report);
+        const buffer = isExcel
+            ? await ventasMesas.createExcelBuffer(report, charts, detalle)
+            : await ventasMesas.createPdfBuffer(report, charts, detalle);
+        res.setHeader('Content-Type', isExcel
+            ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            : 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${ventasMesas.reportFilename(report, isExcel ? 'xlsx' : 'pdf')}"`);
+        res.setHeader('Content-Length', buffer.length);
+        res.send(Buffer.from(buffer));
+    } catch (e) {
+        vmError(res, e, `Error exportando ventas por tipo de mesa a ${formato}:`);
+    }
+}
+
+app.post('/api/reports/ventas-mesas/export/excel', isAuthenticated, (req, res) => exportarVentasMesas(req, res, 'excel'));
+app.post('/api/reports/ventas-mesas/export/pdf', isAuthenticated, (req, res) => exportarVentasMesas(req, res, 'pdf'));
+
 // =========== REPORTE: COMPARATIVO BANCO VS EFECTIVO ===========
 const CBC_MAX_DIAS = 366;
 const CBC_TIPO_DOC = `CASE

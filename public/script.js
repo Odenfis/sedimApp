@@ -188,13 +188,14 @@ function aplicarAlcanceEmpresas(empresas) {
         if (empresas.length === 1) select.disabled = true;
     });
 
-    const ventasSelect = document.getElementById('ve-empresa');
-    if (ventasSelect) {
+    ['ve-empresa', 'vm-empresa'].forEach(id => {
+        const ventasSelect = document.getElementById(id);
+        if (!ventasSelect) return;
         [...ventasSelect.options].forEach(option => { if (option.value) option.hidden = !ventas.has(option.value); });
         const primera = [...ventasSelect.options].find(option => option.value && ventas.has(option.value));
         if (primera && !ventas.has(ventasSelect.value)) ventasSelect.value = primera.value;
         if (empresas.length === 1) ventasSelect.disabled = true;
-    }
+    });
 }
 
 function updateSidebarSectionVisibility() {
@@ -388,6 +389,8 @@ function showView(viewName) {
         if (viewName === 'comparativo-banco') {
             inicializarComparativoBanco();
         }
+
+        if (viewName === 'reporte-ventas-mesas') inicializarVentasMesas();
     }
 
     // 4. Activar visualmente el ítem
@@ -3397,4 +3400,553 @@ async function abonosExportar(formato){
     if(abonosState.exportando || !abonosState.seleccion.size)return;
     abonosState.exportando=true;abonosRenderSeleccion();abonosEl('status').textContent='Generando archivo…';
     try{const ids=[...new Set([...abonosState.seleccion.values()].flatMap(g=>g.salidas.map(s=>s.Numero)))];const response=await fetch(`/api/reports/seguimiento-abonos/export/${formato}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids})});if(!response.ok){const data=await response.json();throw new Error(data.message);}const url=URL.createObjectURL(await response.blob()),link=document.createElement('a');link.href=url;link.download=`seguimiento-abonos-banco.${formato==='excel'?'xlsx':'pdf'}`;document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);abonosEl('status').textContent='Archivo generado.';}catch(e){abonosEl('status').textContent=e.message || 'No se pudo exportar.';}finally{abonosState.exportando=false;abonosRenderSeleccion();}
+}
+
+// ==========================================
+//  REPORTE: VENTAS POR TIPO DE MESA
+// ==========================================
+// Tickets cancelados (Ticket_c.Estado = 4) agrupados por tipo de mesa. Las reglas
+// (prefijo por empresa, rangos de mesa y mozos de apps) viven en el servidor.
+const VM_CHIPS = [
+    ['todos', 'Todos'], ['normal', 'Atención normal'], ['desayunos', 'Desayunos'], ['delivery', 'Delivery'],
+    ['llevar', 'Para llevar'], ['apps', 'PedidosYa | Rappi'], ['descarte', 'Descarte y obsequios'], ['varios', 'Varios']
+];
+const VM_PAGE_SIZE = 50;
+let vmInitialized = false;
+let vmReport = null;
+let vmAppliedFilters = null;
+let vmSeleccion = 'todos';
+let vmReportSequence = 0;
+const vmCharts = { columns: null, evolution: null, mesas: null };
+const vmDetalle = { data: null, filtrados: [], pagina: 0, mesa: null, sequence: 0, controller: null };
+
+function vmTurnoLabel(empresa, turno) {
+    const t = Number(turno);
+    if (t === 0) return 'Ambos turnos';
+    const invertido = empresa === 'Cocineria';
+    if (t === 1) return invertido ? 'Tarde-Noche' : 'Mañana';
+    if (t === 2) return invertido ? 'Mañana' : 'Tarde-Noche';
+    return 'Turno ' + turno;
+}
+
+function vmActualizarTurnos() {
+    const empresa = document.getElementById('vm-empresa').value;
+    const select = document.getElementById('vm-turno');
+    [...select.options].forEach(option => {
+        option.textContent = option.value === '0' ? 'Ambos turnos' : `${vmTurnoLabel(empresa, option.value)} (turno ${option.value})`;
+    });
+}
+
+function vmPercent(value) {
+    return value === null || value === undefined ? '—' : `${(Number(value) * 100).toFixed(1)}%`;
+}
+
+function vmVariacionHtml(value) {
+    if (value === null || value === undefined) return '<span class="vm-var vm-var-na">—</span>';
+    const cls = value > 0 ? 'vm-var-up' : value < 0 ? 'vm-var-down' : '';
+    const arrow = value > 0 ? '▲' : value < 0 ? '▼' : '';
+    return `<span class="vm-var ${cls}">${arrow} ${vmPercent(Math.abs(value))}</span>`;
+}
+
+function vmGruposSeleccion(clave = vmSeleccion) {
+    const grupos = vmReport?.grupos || [];
+    if (clave === 'todos') return grupos;
+    if (clave === 'apps') return grupos.filter(g => g.apps);
+    return grupos.filter(g => g.clave === clave);
+}
+
+function vmResumenSeleccion(clave = vmSeleccion) {
+    if (!vmReport) return null;
+    if (clave === 'todos') {
+        return { etiqueta: 'Todos los tipos de mesa', rango: 'Todas las mesas', total: vmReport.resumen.total, tickets: vmReport.resumen.tickets, variacion: vmReport.anterior?.variacion ?? null };
+    }
+    if (clave === 'apps') {
+        return { etiqueta: 'PedidosYa | Rappi | Otros apps', rango: 'Mesas 220–230', total: vmReport.apps.total, tickets: vmReport.apps.tickets, variacion: vmReport.apps.variacion };
+    }
+    const grupo = vmReport.grupos.find(g => g.clave === clave);
+    return grupo ? { etiqueta: grupo.etiqueta, rango: grupo.rango, total: grupo.total, tickets: grupo.tickets, variacion: grupo.variacion } : null;
+}
+
+async function inicializarVentasMesas() {
+    if (!vmInitialized) {
+        vmInitialized = true;
+        const today = new Date();
+        document.getElementById('vm-fecha-inicio').value = cbDateValue(new Date(today.getFullYear(), today.getMonth(), 1));
+        document.getElementById('vm-fecha-fin').value = cbDateValue(today);
+        vmRenderChips();
+        new MutationObserver(() => { if (vmReport) { vmRenderCharts(); vmRenderMesasChart(); } })
+            .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    }
+    vmActualizarTurnos();
+    if (!vmReport) await cargarVentasMesas();
+}
+
+function getVentasMesasFiltros() {
+    return {
+        empresa: document.getElementById('vm-empresa').value,
+        turno: document.getElementById('vm-turno').value,
+        fechaInicio: document.getElementById('vm-fecha-inicio').value,
+        fechaFin: document.getElementById('vm-fecha-fin').value,
+        comparar: document.getElementById('vm-comparar').checked
+    };
+}
+
+function validarVentasMesasFiltros(f) {
+    if (!f.empresa) throw new Error('Seleccione una empresa.');
+    if (!f.fechaInicio || !f.fechaFin) throw new Error('Seleccione el rango de fechas.');
+    const start = new Date(`${f.fechaInicio}T00:00:00`);
+    const end = new Date(`${f.fechaFin}T00:00:00`);
+    if (end < start) throw new Error('La fecha hasta no puede ser menor que la fecha desde.');
+    if ((end - start) / 86400000 > 365) throw new Error('El periodo máximo permitido es de 366 días.');
+}
+
+async function cargarVentasMesas() {
+    const filtros = getVentasMesasFiltros();
+    try { validarVentasMesasFiltros(filtros); } catch (error) { alert(error.message); return; }
+    const btn = document.getElementById('vm-btn-consultar');
+    const original = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Consultando...';
+    const sequence = ++vmReportSequence;
+    try {
+        const response = await fetch('/api/reports/ventas-mesas', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(filtros)
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.message || 'No se pudo consultar el reporte.');
+        if (sequence !== vmReportSequence) return;
+        vmReport = data;
+        vmAppliedFilters = filtros;
+        if (!vmResumenSeleccion(vmSeleccion)) vmSeleccion = 'todos';
+        vmRenderKPIs();
+        vmRenderChips();
+        vmRenderCharts();
+        vmRenderTabla();
+        vmSeleccionar(vmSeleccion, { scroll: false });
+    } catch (error) {
+        if (sequence !== vmReportSequence) return;
+        console.error('Error en ventas por tipo de mesa:', error);
+        ['columns', 'evolution'].forEach(name => vmChartMessage(name, error.message || 'Error al consultar.'));
+        alert(error.message || 'Error al consultar el reporte');
+    } finally {
+        if (sequence === vmReportSequence) { btn.disabled = false; btn.innerHTML = original; }
+    }
+}
+
+function vmRenderKPIs() {
+    const r = vmReport;
+    document.getElementById('vm-kpi-total').textContent = fmtMoneda(r.resumen.total);
+    document.getElementById('vm-kpi-total-sub').textContent = r.anterior
+        ? `Anterior ${fmtMoneda(r.anterior.total)} · ${r.anterior.variacion === null ? 'sin base' : (r.anterior.variacion >= 0 ? '+' : '') + vmPercent(r.anterior.variacion)}`
+        : `${r.filtros.prefijo}* · ${r.filtros.turnoLabel}`;
+    document.getElementById('vm-kpi-tickets').textContent = r.resumen.tickets.toLocaleString('es-PE');
+    document.getElementById('vm-kpi-tickets-sub').textContent = r.anterior ? `Anterior ${r.anterior.tickets.toLocaleString('es-PE')}` : `${r.filtros.fechaInicio} al ${r.filtros.fechaFin}`;
+    document.getElementById('vm-kpi-promedio').textContent = fmtMoneda(r.resumen.promedio);
+    document.getElementById('vm-kpi-lider').textContent = r.resumen.lider ? r.resumen.lider.etiqueta : '—';
+    document.getElementById('vm-kpi-lider-sub').textContent = r.resumen.lider ? `${fmtMoneda(r.resumen.lider.total)} · ${vmPercent(r.resumen.lider.porcentaje)}` : 'Sin ventas';
+}
+
+function vmRenderChips() {
+    const container = document.getElementById('vm-chips');
+    const chips = [...VM_CHIPS];
+    if (vmReport?.grupos.some(g => g.clave === 'sinclasificar')) chips.push(['sinclasificar', 'Sin clasificar']);
+    container.replaceChildren(...chips.map(([clave, etiqueta]) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'vm-chip' + (clave === vmSeleccion ? ' active' : '');
+        button.dataset.vmGrupo = clave;
+        button.setAttribute('aria-pressed', String(clave === vmSeleccion));
+        const resumen = vmResumenSeleccion(clave);
+        button.title = resumen ? `${resumen.rango} · ${fmtMoneda(resumen.total)}` : etiqueta;
+        button.textContent = etiqueta;
+        button.addEventListener('click', () => vmSeleccionar(clave, { scroll: true }));
+        return button;
+    }));
+}
+
+function vmChartMessage(name, text = '') {
+    const message = document.getElementById('vm-message-' + name);
+    message.textContent = text;
+    message.hidden = !text;
+    document.getElementById('vm-chart-' + name).style.visibility = text ? 'hidden' : 'visible';
+}
+
+function vmEtiquetaMultilinea(label) {
+    const words = String(label).split(' ');
+    if (words.length < 2 || label.length <= 12) return label;
+    const mid = Math.ceil(words.length / 2);
+    return [words.slice(0, mid).join(' '), words.slice(mid).join(' ')];
+}
+
+function vmEnSeleccion(grupo) {
+    if (vmSeleccion === 'todos') return true;
+    if (vmSeleccion === 'apps') return grupo.apps;
+    return grupo.clave === vmSeleccion;
+}
+
+function vmRenderCharts() {
+    if (typeof Chart === 'undefined' || !vmReport) return;
+    vmCharts.columns?.destroy();
+    vmCharts.evolution?.destroy();
+    vmCharts.columns = vmCharts.evolution = null;
+    const colors = cbChartColors();
+    const sinNormal = document.getElementById('vm-sin-normal').checked;
+    const compacto = document.getElementById('vm-chart-columns').parentElement.clientWidth < 560;
+    const grupos = vmReport.grupos.filter(gr => !(sinNormal && gr.clave === 'normal'));
+    const hayDatos = vmReport.resumen.tickets > 0 || (vmReport.anterior?.tickets || 0) > 0;
+    vmChartMessage('columns', hayDatos ? '' : 'Sin ventas para los filtros seleccionados.');
+    vmChartMessage('evolution', vmReport.resumen.tickets ? '' : 'Sin ventas para los filtros seleccionados.');
+    document.getElementById('vm-columns-sub').textContent = vmReport.anterior
+        ? `Actual vs. ${vmReport.anterior.fechaInicio} al ${vmReport.anterior.fechaFin} · pulse una columna para ver sus tickets`
+        : 'Pulse una columna para ver sus tickets';
+    const g = vmReport.evolucion.granularidad;
+    document.getElementById('vm-evolution-sub').textContent = `Agrupación ${g} (automática según el rango)`;
+    if (!hayDatos) return;
+
+    const datasets = [];
+    if (vmReport.anterior) {
+        datasets.push({
+            label: 'Periodo anterior', data: grupos.map(gr => gr.anterior?.total || 0),
+            backgroundColor: grupos.map(gr => vmEnSeleccion(gr) ? '#94a3b8' : '#94a3b833'), borderRadius: 6, maxBarThickness: 46,
+            datalabels: { display: false }
+        });
+    }
+    datasets.push({
+        label: vmReport.anterior ? 'Periodo actual' : 'Total vendido', data: grupos.map(gr => gr.total),
+        backgroundColor: grupos.map(gr => vmEnSeleccion(gr) ? gr.color : gr.color + '33'), borderRadius: 6, maxBarThickness: 56,
+        datalabels: {
+            display: context => context.dataset.data[context.dataIndex] > 0,
+            anchor: 'end', align: 'end', offset: 2, clamp: true,
+            color: colors.text, font: { size: 10, weight: '600' },
+            formatter: (value, context) => compacto ? ccCompactMoney(value) : [ccCompactMoney(value), vmPercent(grupos[context.dataIndex].porcentaje)],
+            rotation: compacto ? -90 : 0
+        }
+    });
+    vmCharts.columns = new Chart(document.getElementById('vm-chart-columns'), {
+        type: 'bar',
+        data: { labels: grupos.map(gr => compacto ? cbShortLabel(gr.etiqueta, 12) : vmEtiquetaMultilinea(gr.etiqueta)), datasets },
+        options: {
+            responsive: true, maintainAspectRatio: false, animation: false,
+            layout: { padding: { top: 34 } },
+            interaction: { mode: 'index', intersect: false },
+            onClick: (event, elements) => { if (elements.length) vmSeleccionar(grupos[elements[0].index].clave, { scroll: true }); },
+            onHover: (event, elements) => { event.native.target.style.cursor = elements.length ? 'pointer' : 'default'; },
+            plugins: {
+                legend: {
+                    display: Boolean(vmReport.anterior), position: 'bottom',
+                    labels: {
+                        color: colors.text, usePointStyle: true, boxWidth: 10,
+                        generateLabels: chart => chart.data.datasets.map((ds, i) => {
+                            const color = ds.label === 'Periodo anterior' ? '#94a3b8' : '#2F5FC4';
+                            return { text: ds.label, fillStyle: color, strokeStyle: color, fontColor: colors.text, pointStyle: 'circle', hidden: !chart.isDatasetVisible(i), datasetIndex: i };
+                        })
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        title: items => grupos[items[0].dataIndex].etiqueta + ' · ' + grupos[items[0].dataIndex].rango,
+                        label: context => context.dataset.label + ': ' + fmtMoneda(context.raw),
+                        afterBody: items => {
+                            const gr = grupos[items[0].dataIndex];
+                            const lines = [`Tickets: ${gr.tickets.toLocaleString('es-PE')}`, `Ticket promedio: ${fmtMoneda(gr.promedio)}`, `% del total: ${vmPercent(gr.porcentaje)}`];
+                            if (vmReport.anterior) lines.push(`Variación: ${gr.variacion === null ? 'sin base anterior' : vmPercent(gr.variacion)}`);
+                            return lines;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: { grid: { display: false }, ticks: { color: colors.text, autoSkip: false, maxRotation: compacto ? 60 : 0, minRotation: compacto ? 45 : 0, font: { size: compacto ? 10 : 11 } } },
+                y: { beginAtZero: true, grace: '8%', grid: { color: colors.grid }, ticks: { color: colors.text, maxTicksLimit: 6, callback: value => ccCompactMoney(value) } }
+            }
+        }
+    });
+
+    const periodos = vmReport.evolucion.periodos;
+    const evoDatasets = vmReport.grupos.filter(gr => gr.total > 0).map(gr => ({
+        label: gr.etiqueta, data: periodos.map(p => p.grupos[gr.clave] || 0),
+        backgroundColor: gr.color, stack: 'ventas', hidden: !vmEnSeleccion(gr), datalabels: { display: false }
+    }));
+    vmCharts.evolution = new Chart(document.getElementById('vm-chart-evolution'), {
+        type: 'bar',
+        data: { labels: periodos.map(p => p.etiqueta), datasets: evoDatasets },
+        options: {
+            responsive: true, maintainAspectRatio: false, animation: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                datalabels: { display: false },
+                legend: { position: 'bottom', labels: { color: colors.text, usePointStyle: true, boxWidth: 10, padding: 12 } },
+                tooltip: {
+                    filter: item => item.raw > 0,
+                    callbacks: {
+                        label: context => context.dataset.label + ': ' + fmtMoneda(context.raw),
+                        footer: items => 'Total visible: ' + fmtMoneda(items.reduce((s, i) => s + i.raw, 0))
+                    }
+                }
+            },
+            scales: {
+                x: { stacked: true, grid: { display: false }, ticks: { color: colors.text, maxRotation: 0, autoSkip: true, maxTicksLimit: 16 } },
+                y: { stacked: true, beginAtZero: true, grid: { color: colors.grid }, ticks: { color: colors.text, maxTicksLimit: 6, callback: value => ccCompactMoney(value) } }
+            }
+        }
+    });
+}
+
+function vmRenderTabla() {
+    const table = document.getElementById('vm-table');
+    const r = vmReport;
+    const comparar = Boolean(r.anterior);
+    const headers = ['TIPO DE MESA', 'MESAS', 'TICKETS', 'TOTAL', 'TICKET PROM.', '% DEL TOTAL'];
+    if (comparar) headers.push('ANTERIOR', 'VARIACIÓN');
+    table.querySelector('thead').innerHTML = '<tr>' + headers.map(h => `<th>${h}</th>`).join('') + '</tr>';
+    const fila = (clave, etiqueta, rango, tickets, total, porcentaje, anterior, variacion, color, extraClass = '') => {
+        const promedio = tickets ? total / tickets : 0;
+        const pct = Math.max(0, Math.min(100, (porcentaje || 0) * 100));
+        return `<tr class="vm-row ${extraClass}" data-vm-grupo="${clave}" tabindex="0" role="button" aria-label="Ver tickets de ${escapeHtmlCfg(etiqueta)}">
+            <td><span class="vm-dot" style="background:${color}"></span>${escapeHtmlCfg(etiqueta)}</td>
+            <td class="vm-range">${escapeHtmlCfg(rango)}</td>
+            <td class="cb-number">${tickets.toLocaleString('es-PE')}</td>
+            <td class="cb-money">${fmtMoneda(total)}</td>
+            <td class="cb-money">${fmtMoneda(promedio)}</td>
+            <td class="cb-number"><div class="vm-pct"><span class="vm-pct-bar"><i style="width:${pct}%;background:${color}"></i></span>${vmPercent(porcentaje)}</div></td>
+            ${comparar ? `<td class="cb-money">${fmtMoneda(anterior?.total || 0)}</td><td class="cb-number">${vmVariacionHtml(variacion)}</td>` : ''}
+        </tr>`;
+    };
+    let html = '';
+    r.grupos.forEach(g => {
+        html += fila(g.clave, g.etiqueta, g.rango, g.tickets, g.total, g.porcentaje, g.anterior, g.variacion, g.color, g.apps ? 'vm-row-app' : '');
+        if (g.clave === 'otrasapps') {
+            html += fila('apps', 'Subtotal Apps', 'PedidosYa + Rappi + Otros', r.apps.tickets, r.apps.total, r.apps.porcentaje, r.apps.anterior, r.apps.variacion, '#ef4444', 'vm-row-subtotal');
+        }
+    });
+    table.querySelector('tbody').innerHTML = html;
+    table.querySelector('tfoot').innerHTML = `<tr><td>TOTAL GENERAL</td><td></td><td class="cb-number">${r.resumen.tickets.toLocaleString('es-PE')}</td>
+        <td class="cb-money">${fmtMoneda(r.resumen.total)}</td><td class="cb-money">${fmtMoneda(r.resumen.promedio)}</td><td class="cb-number">${r.resumen.tickets ? '100.0%' : '0.0%'}</td>
+        ${comparar ? `<td class="cb-money">${fmtMoneda(r.anterior.total)}</td><td class="cb-number">${vmVariacionHtml(r.anterior.variacion)}</td>` : ''}</tr>`;
+    table.querySelectorAll('tbody tr[data-vm-grupo]').forEach(row => {
+        const open = () => vmSeleccionar(row.dataset.vmGrupo, { scroll: true });
+        row.addEventListener('click', open);
+        row.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
+    });
+}
+
+function vmSeleccionar(clave, { scroll = false } = {}) {
+    if (!vmReport) return;
+    vmSeleccion = clave;
+    document.querySelectorAll('#vm-chips .vm-chip').forEach(chip => {
+        const active = chip.dataset.vmGrupo === clave;
+        chip.classList.toggle('active', active);
+        chip.setAttribute('aria-pressed', String(active));
+    });
+    document.querySelectorAll('#vm-table tbody tr[data-vm-grupo]').forEach(row => row.classList.toggle('vm-row-active', row.dataset.vmGrupo === clave));
+    const grupos = vmReport.grupos;
+    const gruposColumnas = document.getElementById('vm-sin-normal').checked ? grupos.filter(gr => gr.clave !== 'normal') : grupos;
+    if (vmCharts.columns) {
+        vmCharts.columns.data.datasets.forEach(ds => {
+            const anterior = ds.label === 'Periodo anterior';
+            ds.backgroundColor = gruposColumnas.map(gr => anterior ? (vmEnSeleccion(gr) ? '#94a3b8' : '#94a3b833') : (vmEnSeleccion(gr) ? gr.color : gr.color + '33'));
+        });
+        vmCharts.columns.update('none');
+    }
+    if (vmCharts.evolution) {
+        vmCharts.evolution.data.datasets.forEach(ds => {
+            const gr = grupos.find(item => item.etiqueta === ds.label);
+            ds.hidden = gr ? !vmEnSeleccion(gr) : false;
+        });
+        vmCharts.evolution.update('none');
+    }
+    const resumen = vmResumenSeleccion(clave);
+    const f = vmReport.filtros;
+    document.getElementById('vm-detalle').hidden = false;
+    document.getElementById('vm-detalle-titulo').textContent = resumen.etiqueta;
+    document.getElementById('vm-detalle-contexto').textContent = `${f.empresa} · ${f.turnoLabel} · ${f.fechaInicio} al ${f.fechaFin} · ${resumen.rango}`;
+    document.getElementById('vm-detalle-var-wrap').hidden = !vmReport.anterior;
+    document.getElementById('vm-detalle-var').innerHTML = vmVariacionHtml(resumen.variacion);
+    document.getElementById('vm-detalle-buscar').value = '';
+    vmRenderMesasChart();
+    vmCargarDetalle(null);
+    if (scroll) document.getElementById('vm-detalle').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function vmMesasSeleccion() {
+    const porMesa = new Map();
+    vmGruposSeleccion().forEach(g => g.mesas.forEach(m => {
+        const acc = porMesa.get(m.mesa) || { mesa: m.mesa, tickets: 0, total: 0, color: g.color };
+        acc.tickets += m.tickets;
+        acc.total += m.total;
+        porMesa.set(m.mesa, acc);
+    }));
+    return [...porMesa.values()].sort((a, b) => b.total - a.total);
+}
+
+function vmRenderMesasChart() {
+    if (typeof Chart === 'undefined' || !vmReport) return;
+    vmCharts.mesas?.destroy();
+    vmCharts.mesas = null;
+    const todas = vmMesasSeleccion();
+    const mesas = todas.slice(0, 15);
+    const wrap = document.getElementById('vm-detalle-mesas-wrap');
+    wrap.hidden = !mesas.length;
+    if (!mesas.length) return;
+    wrap.querySelector('h4').innerHTML = `${todas.length > 15 ? 'Top 15 mesas' : 'Ventas por mesa'} <small>(pulse una barra para filtrar)</small>`;
+    document.querySelector('.vm-mesas-stage').style.height = `${Math.max(180, mesas.length * 26 + 50)}px`;
+    const colors = cbChartColors();
+    vmCharts.mesas = new Chart(document.getElementById('vm-chart-mesas'), {
+        type: 'bar',
+        data: {
+            labels: mesas.map(m => 'Mesa ' + m.mesa),
+            datasets: [{ label: 'Total', data: mesas.map(m => m.total), backgroundColor: mesas.map(m => vmDetalle.mesa === null || String(vmDetalle.mesa) === String(m.mesa) ? m.color : m.color + '40'), borderRadius: 4, maxBarThickness: 18 }]
+        },
+        options: {
+            indexAxis: 'y', responsive: true, maintainAspectRatio: false, animation: false,
+            layout: { padding: { right: 70 } },
+            onClick: (event, elements) => {
+                if (!elements.length) return;
+                const mesa = mesas[elements[0].index].mesa;
+                vmCargarDetalle(String(vmDetalle.mesa) === String(mesa) ? null : mesa);
+            },
+            onHover: (event, elements) => { event.native.target.style.cursor = elements.length ? 'pointer' : 'default'; },
+            plugins: {
+                legend: { display: false },
+                datalabels: { anchor: 'end', align: 'end', color: colors.text, font: { size: 10 }, formatter: value => ccCompactMoney(value), clamp: false, clip: false },
+                tooltip: { callbacks: { label: context => `${fmtMoneda(context.raw)} · ${mesas[context.dataIndex].tickets} tickets` } }
+            },
+            scales: {
+                x: { beginAtZero: true, grid: { color: colors.grid }, ticks: { color: colors.text, maxTicksLimit: 4, callback: value => ccCompactMoney(value) } },
+                y: { grid: { display: false }, ticks: { color: colors.text, autoSkip: false, font: { size: 11 } } }
+            }
+        }
+    });
+}
+
+async function vmCargarDetalle(mesa) {
+    vmDetalle.controller?.abort();
+    vmDetalle.controller = new AbortController();
+    const sequence = ++vmDetalle.sequence;
+    vmDetalle.mesa = mesa;
+    vmDetalle.pagina = 0;
+    const status = document.getElementById('vm-detalle-status');
+    status.hidden = false;
+    status.textContent = 'Cargando tickets…';
+    document.querySelector('#vm-detalle-tabla tbody').replaceChildren();
+    document.querySelector('#vm-detalle-tabla tfoot').replaceChildren();
+    const chip = document.getElementById('vm-detalle-mesa-chip');
+    chip.hidden = mesa === null;
+    if (mesa !== null) {
+        chip.innerHTML = `Mesa ${escapeHtmlCfg(mesa)} <button type="button" aria-label="Quitar filtro de mesa">&times;</button>`;
+        chip.querySelector('button').addEventListener('click', () => vmCargarDetalle(null));
+    }
+    if (vmCharts.mesas) {
+        const mesas = vmMesasSeleccion().slice(0, 15);
+        vmCharts.mesas.data.datasets[0].backgroundColor = mesas.map(m => mesa === null || String(mesa) === String(m.mesa) ? m.color : m.color + '40');
+        vmCharts.mesas.update('none');
+    }
+    try {
+        const response = await fetch('/api/reports/ventas-mesas/detalle', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...vmAppliedFilters, grupo: vmSeleccion, mesa: mesa === null || mesa === 'S/N' ? null : mesa }),
+            signal: vmDetalle.controller.signal
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.message || 'No se pudo cargar el detalle.');
+        if (sequence !== vmDetalle.sequence) return;
+        vmDetalle.data = data;
+        const t = data.totales;
+        document.getElementById('vm-detalle-total').textContent = fmtMoneda(t.total);
+        document.getElementById('vm-detalle-count').textContent = t.tickets.toLocaleString('es-PE');
+        document.getElementById('vm-detalle-promedio').textContent = fmtMoneda(t.tickets ? t.total / t.tickets : 0);
+        status.hidden = !data.truncado;
+        status.textContent = data.truncado
+            ? `Se muestran los primeros ${data.limite.toLocaleString('es-PE')} de ${t.tickets.toLocaleString('es-PE')} tickets. Los totales corresponden al grupo completo; use Excel para el listado íntegro.`
+            : '';
+        vmFiltrarTickets();
+    } catch (error) {
+        if (sequence !== vmDetalle.sequence || error.name === 'AbortError') return;
+        status.hidden = false;
+        status.innerHTML = `${escapeHtmlCfg(error.message || 'No se pudo cargar el detalle.')} <button type="button" class="vm-retry">Reintentar</button>`;
+        status.querySelector('button').addEventListener('click', () => vmCargarDetalle(mesa));
+    }
+}
+
+function vmFiltrarTickets() {
+    const termino = cbSearchKey(document.getElementById('vm-detalle-buscar').value.trim());
+    const tickets = vmDetalle.data?.tickets || [];
+    vmDetalle.filtrados = termino
+        ? tickets.filter(t => cbSearchKey(`${t.nroTicket} mesa ${t.mesa ?? ''} mozo ${t.mozo ?? ''} ${t.grupoEtiqueta}`).includes(termino))
+        : tickets;
+    vmDetalle.pagina = 0;
+    vmRenderTickets();
+}
+
+function vmCambiarPagina(delta) {
+    const paginas = Math.max(1, Math.ceil(vmDetalle.filtrados.length / VM_PAGE_SIZE));
+    vmDetalle.pagina = Math.min(paginas - 1, Math.max(0, vmDetalle.pagina + delta));
+    vmRenderTickets();
+}
+
+function vmRenderTickets() {
+    const rows = vmDetalle.filtrados;
+    const empresa = vmReport?.filtros.empresa;
+    const paginas = Math.max(1, Math.ceil(rows.length / VM_PAGE_SIZE));
+    const inicio = vmDetalle.pagina * VM_PAGE_SIZE;
+    const pagina = rows.slice(inicio, inicio + VM_PAGE_SIZE);
+    const tbody = document.querySelector('#vm-detalle-tabla tbody');
+    tbody.innerHTML = pagina.length ? pagina.map(t => `<tr>
+        <td data-label="Nro. ticket">${escapeHtmlCfg(t.nroTicket)}</td>
+        <td data-label="Mesa" class="cb-number">${t.mesa ?? '—'}</td>
+        <td data-label="Mozo" class="cb-number">${t.mozo ?? '—'}</td>
+        <td data-label="Total" class="cb-money vm-ticket-total">${fmtMoneda(t.total)}</td>
+        <td data-label="Flete" class="cb-money">${fmtMoneda(t.flete)}</td>
+        <td data-label="Propina" class="cb-money">${fmtMoneda(t.propina)}</td>
+        <td data-label="Fecha">${escapeHtmlCfg(t.fecha)}</td>
+        <td data-label="Turno">${escapeHtmlCfg(vmTurnoLabel(empresa, t.turno))}</td>
+        <td data-label="Tipo de mesa">${escapeHtmlCfg(t.grupoEtiqueta)}</td>
+    </tr>`).join('') : '<tr><td colspan="9" class="empty-state-message">Sin tickets para la selección.</td></tr>';
+    const suma = campo => rows.reduce((s, t) => s + (Number(t[campo]) || 0), 0);
+    const busqueda = document.getElementById('vm-detalle-buscar').value.trim();
+    document.querySelector('#vm-detalle-tabla tfoot').innerHTML = rows.length ? `<tr>
+        <td colspan="3">${busqueda ? 'SUMA DE LA BÚSQUEDA' : 'SUMA'} · ${rows.length.toLocaleString('es-PE')} tickets</td>
+        <td class="cb-money vm-ticket-total" data-label="Total">${fmtMoneda(suma('total'))}</td>
+        <td class="cb-money" data-label="Flete">${fmtMoneda(suma('flete'))}</td>
+        <td class="cb-money" data-label="Propina">${fmtMoneda(suma('propina'))}</td>
+        <td colspan="3" class="vm-foot-spacer"></td></tr>` : '';
+    document.getElementById('vm-detalle-pagina').textContent = rows.length
+        ? `${(inicio + 1).toLocaleString('es-PE')}–${Math.min(inicio + VM_PAGE_SIZE, rows.length).toLocaleString('es-PE')} de ${rows.length.toLocaleString('es-PE')} · página ${vmDetalle.pagina + 1}/${paginas}`
+        : '';
+    document.getElementById('vm-detalle-prev').disabled = vmDetalle.pagina === 0;
+    document.getElementById('vm-detalle-next').disabled = vmDetalle.pagina >= paginas - 1;
+}
+
+async function exportarVentasMesas(formato, btn) {
+    const filtros = vmAppliedFilters || getVentasMesasFiltros();
+    try { validarVentasMesasFiltros(filtros); } catch (error) { alert(error.message); return; }
+    const formatoValido = formato === 'pdf' ? 'pdf' : 'excel';
+    const original = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Generando ${formatoValido === 'pdf' ? 'PDF' : 'Excel'}...`;
+    try {
+        const response = await fetch(`/api/reports/ventas-mesas/export/${formatoValido}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...filtros, grupo: vmSeleccion })
+        });
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.message || 'No se pudo generar el archivo');
+        }
+        const blob = await response.blob();
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        const match = (response.headers.get('Content-Disposition') || '').match(/filename="?([^";]+)"?/i);
+        link.download = match?.[1] || `VentasTipoMesa.${formatoValido === 'pdf' ? 'pdf' : 'xlsx'}`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(link.href);
+    } catch (error) {
+        console.error('Error exportando ventas por tipo de mesa:', error);
+        alert(error.message || 'Error al exportar');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = original;
+    }
 }
